@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "com.devcraft.app-merged_res-56:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "com.devcraft.app-main-57:/mipmap-anydpi-v26/ic_launcher.xml"
+    },
+    {
+        "merged": "com.devcraft.app-merged_res-56:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "com.devcraft.app-main-57:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    }
+]
