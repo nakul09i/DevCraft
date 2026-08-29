@@ -16,9 +16,11 @@ import androidx.compose.ui.unit.sp
 fun DashboardScreen(
     isOnline: Boolean,
     totalOrders: Int,
+    unreadMessageCount: Int,
     pendingSyncCount: Int,
     conflictCount: Int,
     onToggleNetwork: () -> Unit,
+    onNavigateInbox: () -> Unit,
     onNavigateNewOrder: () -> Unit,
     onNavigateOrders: () -> Unit,
     onNavigateSearch: () -> Unit,
@@ -63,40 +65,43 @@ fun DashboardScreen(
             Text(if (isOnline) "Simulate Offline Mode" else "Simulate Online Mode")
         }
 
-        // Metrics Grid
+        // Metrics Grid (2x2)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            MetricCard("Message Inbox", "$unreadMessageCount unread", Modifier.weight(1f), onNavigateInbox)
             MetricCard("Total Orders", "$totalOrders", Modifier.weight(1f), onNavigateOrders)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             MetricCard("Pending Sync", "$pendingSyncCount", Modifier.weight(1f), {})
             MetricCard("Conflicts", "$conflictCount", Modifier.weight(1f), onNavigateConflicts)
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Quick Actions
         Text(text = "Quick Actions", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
 
         Button(
-            onClick = onNavigateNewOrder,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
+            onClick = onNavigateInbox,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("Parse New Message Order", fontSize = 16.sp)
+            Text("Open Message Inbox", fontSize = 15.sp)
+        }
+
+        OutlinedButton(
+            onClick = onNavigateNewOrder,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text("Parse New Message Order", fontSize = 15.sp)
         }
 
         OutlinedButton(
             onClick = onNavigateOrders,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
+            modifier = Modifier.fillMaxWidth().height(52.dp),
             shape = RoundedCornerShape(12.dp)
         ) {
-            Text("View All Orders", fontSize = 16.sp)
-        }
-
-        OutlinedButton(
-            onClick = onNavigateSearch,
-            modifier = Modifier.fillMaxWidth().height(54.dp),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Text("Offline Order Search", fontSize = 16.sp)
+            Text("View All Orders", fontSize = 15.sp)
         }
     }
 }
