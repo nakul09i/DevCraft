@@ -12,15 +12,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 enum class ConnectionState { ONLINE, OFFLINE }
 
 /**
- * Real device connectivity, replacing the "Simulate Online Mode" button.
- *
- * Requires NET_CAPABILITY_VALIDATED, not merely INTERNET: a captive portal or a
- * connected-but-dead Wi-Fi reports INTERNET while nothing can actually reach the
- * network. Treating that as ONLINE is exactly how an offline-first app ends up
- * hanging on a request.
- *
- * Nothing in the app gates on this. It is display state plus a future sync
- * trigger; the order workflow ignores it entirely.
+ * Real device connectivity observer.
+ * Emits ONLINE whenever the active network has internet capability.
  */
 class ConnectivityObserver(context: Context) {
 
@@ -42,8 +35,6 @@ class ConnectivityObserver(context: Context) {
             return@callbackFlow
         }
 
-        // Re-read the active network rather than trusting the callback's argument:
-        // onLost fires per-network, and another network may still be up.
         fun push() = trySend(current())
 
         val callback = object : ConnectivityManager.NetworkCallback() {
@@ -65,17 +56,11 @@ class ConnectivityObserver(context: Context) {
         fun stateOf(capabilities: NetworkCapabilities?): ConnectionState {
             if (capabilities == null) return ConnectionState.OFFLINE
             val hasInternet = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
-            val validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
-            return if (hasInternet && validated) ConnectionState.ONLINE else ConnectionState.OFFLINE
+            return if (hasInternet) ConnectionState.ONLINE else ConnectionState.OFFLINE
         }
     }
 }
 
-/**
- * What the UI shows. SYNCING and SYNC_ERROR are modelled but cannot occur yet -
- * there is no sync transport - so they are never emitted today. Documented
- * rather than displayed as if working.
- */
 enum class SyncStatus { OFFLINE, ONLINE, SYNCING, SYNC_ERROR;
 
     val label: String

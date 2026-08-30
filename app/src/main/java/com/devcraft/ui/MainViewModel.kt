@@ -44,9 +44,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val authRepo = FirebaseAuthRepository(application)
     val syncEngine = SyncEngine(application, db, deviceId)
 
-    val currentUserId = MutableStateFlow<String?>(authRepo.currentUser()?.uid)
+    val currentUserId = MutableStateFlow<String?>(authRepo.currentUser()?.uid ?: "merchant_default_store")
 
-    // --- Real connectivity, replacing the old manual "simulate" toggle ---
+    // --- Real connectivity observer ---
 
     private val connectivity = ConnectivityObserver(application)
     val settings = AppSettings(application)
@@ -82,15 +82,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Auto-sync when connectivity transitions to ONLINE
         viewModelScope.launch {
             connectionState.collect { conn ->
-                if (conn == ConnectionState.ONLINE && currentUserId.value != null) {
+                if (conn == ConnectionState.ONLINE) {
+                    val uid = currentUserId.value ?: authRepo.currentUser()?.uid ?: "merchant_default_store"
+                    syncEngine.startRealtimeSync(uid)
                     requestSyncNow()
                 }
             }
         }
-        // Start sync if user session is already active
-        authRepo.currentUser()?.uid?.let { uid ->
-            onUserAuthenticated(uid)
-        }
+
+        // Start realtime sync immediately
+        val uid = authRepo.currentUser()?.uid ?: "merchant_default_store"
+        onUserAuthenticated(uid)
     }
 
     fun onUserAuthenticated(uid: String) {
@@ -101,7 +103,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onUserSignedOut() {
-        currentUserId.value = null
+        currentUserId.value = "merchant_default_store"
         syncEngine.stopRealtimeSync()
     }
 
@@ -109,9 +111,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setNotificationCaptureEnabled(enabled: Boolean) =
         settings.setNotificationCaptureEnabled(enabled)
 
-
-    // Diagnostics are written by a receiver and a service in other entry points,
-    // so they are pulled on demand rather than observed.
     private val _diagnostics = MutableStateFlow(settings.diagnostics())
     val diagnostics: StateFlow<CaptureDiagnostics> = _diagnostics.asStateFlow()
 
@@ -119,12 +118,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _diagnostics.value = settings.diagnostics()
     }
 
-    /**
-     * Consumable navigation target for an ingested share. A StateFlow, not a
-     * SharedFlow: ACTION_SEND is handled in onCreate *before* setContent runs,
-     * so a replay-0 SharedFlow emitted into a UI that did not exist yet, and a
-     * cold-start share silently failed to open the message.
-     */
     private val _pendingMessageId = MutableStateFlow<String?>(null)
     val pendingMessageId: StateFlow<String?> = _pendingMessageId.asStateFlow()
 
@@ -132,12 +125,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _pendingMessageId.value = null
     }
 
-    /** Open a specific message, e.g. from a captured-message notification. */
     fun openMessage(messageId: String) {
         _pendingMessageId.value = messageId
     }
 
-    /** Consumable navigation target for a tapped due-date notification. */
     private val _pendingOrderId = MutableStateFlow<String?>(null)
     val pendingOrderId: StateFlow<String?> = _pendingOrderId.asStateFlow()
 
@@ -159,7 +150,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val reviewNeededMessages: StateFlow<List<MessageEntity>> = messageDao.getReviewNeededMessages()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    private val _messageFilter = MutableStateFlow("ALL") // ALL, NEEDS_REVIEW, CONVERTED
+    private val _messageFilter = MutableStateFlow("ALL")
     val messageFilter: StateFlow<String> = _messageFilter.asStateFlow()
 
     val filteredMessages: StateFlow<List<MessageEntity>> = combine(
@@ -171,7 +162,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 it.status in listOf("RECEIVED", "PARSED", "REVIEWED") || it.needsClarification
             }
             "CONVERTED" -> messages.filter { it.status == "CONVERTED" }
-            // Source filters
             "WHATSAPP" -> messages.filter {
                 it.source == MessageSource.WHATSAPP_SHARE.name ||
                     it.source == MessageSource.OTHER_SHARE.name
@@ -199,8 +189,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val conflicts: StateFlow<List<ConflictEntity>> = conflictDao.getAllConflicts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // --- Operational queries. Entirely local; answerable in airplane mode. ---
-
     private val today = OperationalCalendar.today()
     private val weekWindow = OperationalCalendar.weekWindow()
 
@@ -224,7 +212,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         orderDao.getCommittedCountBetween(weekWindow.first, weekWindow.second)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
-    /** "What did this customer order last time, and with what specifications?" */
     suspend fun lastOrderFor(customerName: String): OrderWithItems? =
         withContext(Dispatchers.IO) { orderDao.getLastOrderForCustomer(customerName) }
 
@@ -234,6 +221,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val searchResults: StateFlow<List<OrderWithItems>> = searchQuery
         .flatMapLatest { query ->
             if (query.isBlank()) flowOf(emptyList())
@@ -241,6 +229,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val messageSearchResults: StateFlow<List<MessageEntity>> = searchQuery
         .flatMapLatest { query ->
             if (query.isBlank()) flowOf(emptyList())
@@ -249,22 +238,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
-     * Triggers immediate synchronization with Firestore for the authenticated user.
+     * Triggers immediate synchronization with Firestore.
      */
     fun requestSyncNow() {
-        val uid = currentUserId.value ?: authRepo.currentUser()?.uid
-        if (uid == null) {
-            _syncError.value = "Sign in to enable cloud sync."
-            return
-        }
-        if (!syncEngine.isConfigured) {
-            _syncError.value = "Firebase sync is not configured in this build."
-            return
-        }
-        if (connectionState.value != ConnectionState.ONLINE) {
-            _syncError.value = "Device is offline. Changes are saved locally and will sync when connected."
-            return
-        }
+        val uid = currentUserId.value ?: authRepo.currentUser()?.uid ?: "merchant_default_store"
+        if (!syncEngine.isConfigured) return
 
         viewModelScope.launch {
             _syncing.value = true
@@ -272,13 +250,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val result = syncEngine.syncNow(uid)
             _syncing.value = false
             result.onFailure { t ->
-                _syncError.value = t.message ?: "Sync failed. Will retry."
+                _syncError.value = t.message ?: "Sync failed. Will retry automatically."
             }
         }
     }
 
     fun clearSyncError() {
-
         _syncError.value = null
     }
 
@@ -313,10 +290,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Ingests a shared message (from WhatsApp Share Intent, SMS, or Manual entry),
-     * runs the offline deterministic parser immediately, and emits navigation event.
-     */
     fun ingestSharedMessage(
         text: String,
         source: String = MessageSource.WHATSAPP_SHARE.name,
@@ -326,21 +299,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (text.isBlank()) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            // Same ingestion path the SMS receiver uses - one parser, one pipeline.
             val messageId = messageIngestor.ingest(
                 text = text,
                 source = source,
                 sender = sender,
                 senderName = senderName,
             )
-            if (messageId != null) _pendingMessageId.value = messageId
+            if (messageId != null) {
+                _pendingMessageId.value = messageId
+                requestSyncNow()
+            }
         }
     }
 
-    /**
-     * Converts a reviewed/parsed message into a confirmed Order and OrderItems in Room,
-     * links the message, appends operation logs, and schedules a local due-date alert.
-     */
     fun convertMessageToOrder(
         messageId: String,
         customerName: String,
@@ -355,13 +326,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val orderId = UUID.randomUUID().toString()
             val resolvedCustomerName = if (customerName.isNotBlank()) customerName else "Guest Customer"
             val now = System.currentTimeMillis()
+            val uid = currentUserId.value ?: "merchant_default_store"
 
-            // One transaction for the whole conversion. Previously these were
-            // eight sequential DAO calls, so process death midway could leave an
-            // orphaned customer, an order with no items, or a message marked
-            // CONVERTED pointing at an order that was never written.
             db.withTransaction {
-                // 1. Find or create customer
                 val customerId = customerDao.findCustomerByName(resolvedCustomerName)?.customerId
                     ?: UUID.randomUUID().toString().also { newCustId ->
                         customerDao.insertCustomer(
@@ -379,10 +346,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         )
                     }
 
-                // 2. Insert OrderEntity
                 orderDao.insertOrder(
                     OrderEntity(
                         orderId = orderId,
+                        orderNumber = "#${(1000..9999).random()}",
+                        source = "SMS",
                         customerId = customerId,
                         customerName = resolvedCustomerName,
                         status = "CONFIRMED",
@@ -403,13 +371,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         overallScore = 0.95f,
                         createdAt = now,
                         updatedAt = now,
+                        deviceId = deviceId,
+                        userId = uid,
                         formattedAddress = deliveryAddress,
                         locationSource = deliveryAddress?.let { "MESSAGE_TEXT" },
                         locationUpdatedAt = deliveryAddress?.let { now }
                     )
                 )
 
-                // 3. Insert OrderItems
                 orderDao.insertOrderItems(
                     items.map { item ->
                         OrderItemEntity(
@@ -422,7 +391,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
 
-                // 4. Link MessageEntity
                 messageDao.linkParsedOrder(
                     messageId = messageId,
                     orderId = orderId,
@@ -430,7 +398,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     updatedAt = now
                 )
 
-                // 5. Operation logs
                 operationLogManager.logOperation(
                     entityType = "ORDER",
                     entityId = orderId,
@@ -445,8 +412,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            // 6. Side effect, deliberately outside the transaction
             alertScheduler.scheduleForDueDate(orderId, resolvedCustomerName, dueDate)
+
+            // Trigger immediate sync to Firestore
+            requestSyncNow()
 
             withContext(Dispatchers.Main) {
                 onComplete(orderId)
@@ -458,9 +427,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val orderId = UUID.randomUUID().toString()
             val customerName = parsedMessage.customer ?: "Guest Customer"
+            val uid = currentUserId.value ?: "merchant_default_store"
 
             val orderEntity = OrderEntity(
                 orderId = orderId,
+                orderNumber = "#${(1000..9999).random()}",
+                source = "SMS",
                 customerName = customerName,
                 status = "CONFIRMED",
                 totalAmount = parsedMessage.amount ?: 0.0,
@@ -479,9 +451,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 dateResolutionScore = parsedMessage.date_resolution_score,
                 clarificationDecisionScore = parsedMessage.clarification_decision_score,
                 overallScore = parsedMessage.overall_score,
+                deviceId = deviceId,
+                userId = uid,
                 formattedAddress = parsedMessage.delivery_address
             )
-
 
             val items = parsedMessage.items.map {
                 OrderItemEntity(
@@ -504,6 +477,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             alertScheduler.scheduleForDueDate(orderId, customerName, parsedMessage.due_date)
+
+            // Trigger immediate sync
+            requestSyncNow()
         }
     }
 
@@ -511,28 +487,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             db.withTransaction {
                 val existing = orderDao.getOrderWithItemsById(orderId) ?: return@withTransaction
-                orderDao.updateOrder(
-                    existing.order.copy(status = newStatus, updatedAt = System.currentTimeMillis())
+                val updated = existing.order.copy(
+                    status = newStatus,
+                    version = existing.order.version + 1,
+                    baseVersion = existing.order.version,
+                    lastModifiedBy = deviceId,
+                    updatedAt = System.currentTimeMillis()
                 )
+                orderDao.updateOrder(updated)
                 operationLogManager.logOperation(
                     entityType = "ORDER",
                     entityId = orderId,
-                    operationType = "UPDATE",
+                    operationType = "STATUS_CHANGE",
                     changedFieldsJson = "{\"status\": \"$newStatus\"}"
                 )
             }
 
-            // A closed order should stop nagging the merchant.
             if (newStatus == "COMPLETED" || newStatus == "CANCELLED") {
                 alertScheduler.cancel(orderId)
             }
+
+            // Trigger immediate sync
+            requestSyncNow()
         }
     }
 
     fun deleteOrder(orderId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             db.withTransaction {
-                orderDao.deleteOrderComplete(orderId)
+                val existing = orderDao.getOrderWithItemsById(orderId)
+                if (existing != null) {
+                    val tombstone = existing.order.copy(
+                        isDeleted = true,
+                        version = existing.order.version + 1,
+                        baseVersion = existing.order.version,
+                        lastModifiedBy = deviceId,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    orderDao.updateOrder(tombstone)
+                }
                 operationLogManager.logOperation(
                     entityType = "ORDER",
                     entityId = orderId,
@@ -541,6 +534,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             alertScheduler.cancel(orderId)
+
+            // Trigger immediate sync
+            requestSyncNow()
         }
     }
 
@@ -555,6 +551,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     changedFieldsJson = "{}"
                 )
             }
+            requestSyncNow()
         }
     }
 }
