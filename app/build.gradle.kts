@@ -1,3 +1,4 @@
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -8,6 +9,18 @@ plugins {
 // google-services.json is per-project Firebase config and is not committed.
 // Apply the plugin only when it is present, so a fresh clone still builds a
 // working offline APK instead of failing at configuration time.
+// Mappls credentials come from local.properties (gitignored) or the environment.
+// Never hardcoded, never committed. Absent key => mapping reports "not configured"
+// and the rest of the app is unaffected.
+val mapplsApiKey: String = run {
+    val props = Properties()
+    rootProject.file("local.properties").takeIf { it.exists() }
+        ?.inputStream()?.use { props.load(it) }
+    props.getProperty("MAPPLS_API_KEY")
+        ?: System.getenv("MAPPLS_API_KEY")
+        ?: ""
+}
+
 val hasFirebaseConfig = project.file("google-services.json").exists()
 if (hasFirebaseConfig) {
     apply(plugin = "com.google.gms.google-services")
@@ -30,6 +43,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("String", "MAPPLS_API_KEY", "\"$mapplsApiKey\"")
     }
 
     buildTypes {
@@ -50,6 +65,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"
@@ -96,8 +112,16 @@ dependencies {
     // JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
 
+    // HTTP for Mappls REST APIs. OkHttp only - Retrofit would add a layer for
+    // the three endpoints we call. Gson (already present) handles the responses;
+    // org.json is deliberately avoided because it is stubbed in JVM unit tests.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
     // Testing
     testImplementation("junit:junit:4.13.2")
+    // Lets us verify Mappls response parsing and HTTP error classification
+    // without credentials or a live service.
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.00"))
