@@ -25,12 +25,7 @@ fun DashboardScreen(
     outstandingTotal: Double,
     committedThisWeekCount: Int,
     committedThisWeekValue: Double,
-    signedInAs: String? = null,
-    canSignOut: Boolean = false,
-    onSignOut: () -> Unit = {},
-    smsCaptureEnabled: Boolean = false,
-    onEnableSmsCapture: () -> Unit = {},
-    onToggleNetwork: () -> Unit,
+    onNavigateSettings: () -> Unit = {},
     onNavigateInbox: () -> Unit,
     onNavigateNewOrder: () -> Unit,
     onNavigateOrders: () -> Unit,
@@ -50,9 +45,10 @@ fun DashboardScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             DevCraftLockup(markSize = 40.dp, nameSize = 22.sp)
+            // Real device connectivity, not a simulated flag.
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = if (isOnline) Color(0xFF4CAF50) else Color(0xFFFF9800),
+                color = if (isOnline) Color(0xFF2E7D32) else MaterialTheme.colorScheme.outline,
                 modifier = Modifier.padding(4.dp)
             ) {
                 Row(
@@ -69,25 +65,18 @@ fun DashboardScreen(
             }
         }
 
-        Button(onClick = onToggleNetwork, modifier = Modifier.fillMaxWidth()) {
-            Text(if (isOnline) "Simulate Offline Mode" else "Simulate Online Mode")
-        }
-
-        if (canSignOut) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = signedInAs?.let { "Signed in as $it" } ?: "Working offline (not signed in)",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = onSignOut) {
-                    Text(if (signedInAs != null) "Sign out" else "Sign in", fontSize = 13.sp)
-                }
-            }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (isOnline) "Connected. Orders still work offline."
+                else "Offline. Everything still works.",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(onClick = onNavigateSettings) { Text("Settings", fontSize = 13.sp) }
         }
 
         // Metrics Grid (2x2)
@@ -100,21 +89,6 @@ fun DashboardScreen(
             MetricCard("Conflicts", "$conflictCount", Modifier.weight(1f), onNavigateConflicts)
         }
 
-        // Channel B opt-in. Order SMS only; unrelated to login OTP.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                text = if (smsCaptureEnabled) "SMS order capture: on" else "SMS order capture: off",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (!smsCaptureEnabled) {
-                TextButton(onClick = onEnableSmsCapture) { Text("Enable", fontSize = 13.sp) }
-            }
-        }
 
         Spacer(modifier = Modifier.height(4.dp))
 

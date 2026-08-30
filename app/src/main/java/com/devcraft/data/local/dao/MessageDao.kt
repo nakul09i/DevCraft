@@ -24,6 +24,20 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE originalText LIKE '%' || :query || '%' OR senderName LIKE '%' || :query || '%' OR sender LIKE '%' || :query || '%' ORDER BY receivedAt DESC")
     fun searchMessages(query: String): Flow<List<MessageEntity>>
 
+    /**
+     * Duplicate guard for ingestion. Carriers and the platform can re-deliver the
+     * same SMS, and a user can share the same WhatsApp text twice by accident.
+     * Matches identical text from the same sender inside a time window rather
+     * than forever, so a customer legitimately re-ordering the same thing next
+     * week is not silently dropped.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM messages WHERE originalText = :text " +
+            "AND IFNULL(sender, '') = IFNULL(:sender, '') " +
+            "AND receivedAt >= :sinceMillis"
+    )
+    suspend fun countRecentDuplicates(text: String, sender: String?, sinceMillis: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 

@@ -6,6 +6,10 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.devcraft.DevCraftApplication
 import com.devcraft.alerts.LocalAlertScheduler
+import com.devcraft.core.AppSettings
+import com.devcraft.core.ConnectionState
+import com.devcraft.core.ConnectivityObserver
+import com.devcraft.core.SyncStatus
 import com.devcraft.data.ingest.MessageIngestor
 import com.devcraft.data.local.dao.CustomerBalance
 import com.devcraft.data.local.dao.OrderWithItems
@@ -34,8 +38,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val operationLogManager = OperationLogManager(operationDao, deviceId)
     private val messageIngestor = MessageIngestor(db, deviceId)
 
-    private val _isOnline = MutableStateFlow(false)
-    val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
+    // --- Real connectivity, replacing the old manual "simulate" toggle ---
+
+    private val connectivity = ConnectivityObserver(application)
+    val settings = AppSettings(application)
+
+    val connectionState: StateFlow<ConnectionState> = connectivity.observe()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), connectivity.current())
+
+    val isOnline: StateFlow<Boolean> = connectionState
+        .map { it == ConnectionState.ONLINE }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /** True only while a sync is actually running. No transport exists yet. */
+    private val _syncing = MutableStateFlow(false)
+    private val _syncError = MutableStateFlow<String?>(null)
+    val syncError: StateFlow<String?> = _syncError.asStateFlow()
+
+    val syncStatus: StateFlow<SyncStatus> = combine(
+        connectionState, _syncing, _syncError
+    ) { connection, syncing, error ->
+        when {
+            syncing -> SyncStatus.SYNCING
+            error != null -> SyncStatus.SYNC_ERROR
+            connection == ConnectionState.ONLINE -> SyncStatus.ONLINE
+            else -> SyncStatus.OFFLINE
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SyncStatus.OFFLINE)
+
+    val smsCaptureEnabled: StateFlow<Boolean> = settings.smsCaptureEnabled
+    val lastSyncAt: StateFlow<Long?> = settings.lastSyncAt
+
+    fun setSmsCaptureEnabled(enabled: Boolean) = settings.setSmsCaptureEnabled(enabled)
 
     /**
      * Consumable navigation target for an ingested share. A StateFlow, not a
@@ -148,8 +182,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    fun toggleNetworkStatus() {
-        _isOnline.value = !_isOnline.value
+    /**
+     * There is no sync transport yet, so this cannot succeed. It reports that
+     * honestly rather than faking a successful sync.
+     */
+    fun requestSyncNow() {
+        _syncError.value = if (connectionState.value == ConnectionState.ONLINE) {
+            "Cloud sync is not implemented yet. Local data is safe."
+        } else {
+            "No connection. Nothing to sync to yet - cloud sync is not implemented."
+        }
+    }
+
+    fun clearSyncError() {
+        _syncError.value = null
     }
 
     fun setMessageFilter(filter: String) {

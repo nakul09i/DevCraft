@@ -6,6 +6,7 @@ import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
 import com.devcraft.DevCraftApplication
+import com.devcraft.core.AppSettings
 import com.devcraft.data.ingest.MessageIngestor
 import com.devcraft.data.local.database.DevCraftDatabase
 import com.devcraft.data.local.entities.MessageSource
@@ -32,6 +33,12 @@ class SmsReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+
+        // Setting is OFF by default; when off we do not even look at the message.
+        if (!AppSettings.isSmsCaptureEnabled(context)) {
+            Log.i(TAG, "SMS order capture is off; ignoring broadcast")
+            return
+        }
 
         val parts = runCatching { Telephony.Sms.Intents.getMessagesFromIntent(intent) }
             .getOrNull()

@@ -13,6 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -161,14 +162,7 @@ class MainActivity : ComponentActivity() {
                                 outstandingTotal = outstanding,
                                 committedThisWeekCount = committedCount,
                                 committedThisWeekValue = committedValue,
-                                signedInAs = authState.user?.phoneNumber,
-                                canSignOut = authState.firebaseAvailable,
-                                onSignOut = authViewModel::signOut,
-                                smsCaptureEnabled = smsPermissionGranted.value,
-                                onEnableSmsCapture = {
-                                    requestSmsPermission.launch(Manifest.permission.RECEIVE_SMS)
-                                },
-                                onToggleNetwork = { viewModel.toggleNetworkStatus() },
+                                onNavigateSettings = { navController.navigate("settings") },
                                 onNavigateInbox = { navController.navigate("inbox") },
                                 onNavigateNewOrder = { navController.navigate("new_order") },
                                 onNavigateOrders = { navController.navigate("orders") },
@@ -200,6 +194,41 @@ class MainActivity : ComponentActivity() {
                                 onNavigateOrderDetail = { id -> navController.navigate("order_detail/$id") },
                                 onNavigateMessageDetail = { id -> navController.navigate("message_detail/$id") },
                                 onNavigateBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable("settings") {
+                            val syncStatus by viewModel.syncStatus.collectAsState()
+                            val lastSync by viewModel.lastSyncAt.collectAsState()
+                            val syncErr by viewModel.syncError.collectAsState()
+                            val smsEnabled by viewModel.smsCaptureEnabled.collectAsState()
+                            val messages by viewModel.allMessages.collectAsState()
+
+                            SettingsScreen(
+                                signedInAs = authState.user?.phoneNumber,
+                                authAvailable = authState.firebaseAvailable,
+                                onSignOut = authViewModel::signOut,
+                                syncStatus = syncStatus,
+                                lastSyncAt = lastSync,
+                                pendingSyncCount = pendingOps.size,
+                                syncError = syncErr,
+                                onSyncNow = viewModel::requestSyncNow,
+                                onDismissSyncError = viewModel::clearSyncError,
+                                smsCaptureEnabled = smsEnabled,
+                                smsPermissionGranted = smsPermissionGranted.value,
+                                onSmsCaptureChange = { enabled ->
+                                    viewModel.setSmsCaptureEnabled(enabled)
+                                    // Turning it on is meaningless without the permission.
+                                    if (enabled && !smsPermissionGranted.value) {
+                                        requestSmsPermission.launch(Manifest.permission.RECEIVE_SMS)
+                                    }
+                                },
+                                orderCount = orders.size,
+                                messageCount = messages.size,
+                                conflictCount = conflicts.size,
+                                databaseVersion = 3,
+                                appVersion = BuildConfig.VERSION_NAME,
+                                onNavigateBack = { navController.popBackStack() },
                             )
                         }
 

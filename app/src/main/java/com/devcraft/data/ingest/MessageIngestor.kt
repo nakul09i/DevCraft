@@ -35,8 +35,15 @@ class MessageIngestor(
         source: String,
         sender: String? = null,
         senderName: String? = null,
+        /** Set false for deliberate manual re-entry of identical text. */
+        deduplicate: Boolean = true,
     ): String? {
         if (text.isBlank()) return null
+
+        if (deduplicate) {
+            val since = System.currentTimeMillis() - DUPLICATE_WINDOW_MS
+            if (messageDao.countRecentDuplicates(text, sender, since) > 0) return null
+        }
 
         val parsed = DeterministicParser.parse(text)
         val messageId = UUID.randomUUID().toString()
@@ -68,5 +75,13 @@ class MessageIngestor(
         }
 
         return messageId
+    }
+
+    companion object {
+        /**
+         * 10 minutes. Long enough to absorb carrier re-delivery and double-taps,
+         * short enough that a genuine repeat order later the same day still lands.
+         */
+        const val DUPLICATE_WINDOW_MS = 10 * 60 * 1000L
     }
 }
