@@ -5,8 +5,8 @@
 | Field | Value |
 | :--- | :--- |
 | File | `DevCraft-Master-debug.apk` |
-| Size | 21,321,628 bytes (20.3 MB) |
-| SHA-256 | `35cb1732c345345148c792eb013c89ee537f7b2d14bb4a8ecc3b4fc4037e747a` |
+| Size | 21,485,696 bytes (20.5 MB) |
+| SHA-256 | `738ae2c74fff1574c31fa8f0d267f9db989aeaa7a43ccc03286e6cac33174a6b` |
 | Package ID | `com.neutron.devcraft` |
 | Version | 1.0 (versionCode 1) |
 | Min Android | 8.0 Oreo (API 26) |
@@ -76,6 +76,9 @@ gh release create v1.0 release/DevCraft-Master-debug.apk release/SHA256SUMS.txt 
    due-date reminders.
 3. **Share a message in:** open WhatsApp → long-press an order message → Share →
    **DevCraft**. It lands in the inbox, already parsed.
+   Optionally enable **SMS order capture** on the dashboard to also ingest
+   incoming customer SMS — see `docs/SMS_INGESTION.md` for the Play Store
+   policy caveat.
 4. Tap **Interpret** → review the extracted customer, date, amount and items →
    **Confirm & Create Room Order**.
 
