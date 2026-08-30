@@ -35,6 +35,23 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+/**
+ * Adds nullable location columns to orders and customers. Every column is
+ * nullable so existing rows stay valid and location remains optional.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (table in listOf("orders", "customers")) {
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `latitude` REAL")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `longitude` REAL")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `formattedAddress` TEXT")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `placeId` TEXT")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `locationSource` TEXT")
+            db.execSQL("ALTER TABLE `$table` ADD COLUMN `locationUpdatedAt` INTEGER")
+        }
+    }
+}
+
 @Database(
     entities = [
         CustomerEntity::class,
@@ -44,7 +61,7 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         ConflictEntity::class,
         MessageEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class DevCraftDatabase : RoomDatabase() {
@@ -65,9 +82,11 @@ abstract class DevCraftDatabase : RoomDatabase() {
                     DevCraftDatabase::class.java,
                     "devcraft_database"
                 )
-                .addMigrations(MIGRATION_1_2)
-                .fallbackToDestructiveMigration()
-                .build()
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    // No fallbackToDestructiveMigration: it silently wipes every
+                    // order a merchant has entered if a migration is ever missed.
+                    // A crash on an unhandled upgrade is far better than data loss.
+                    .build()
                 INSTANCE = instance
                 instance
             }

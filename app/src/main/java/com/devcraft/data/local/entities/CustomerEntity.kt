@@ -12,5 +12,13 @@ data class CustomerEntity(
     val address: String? = null,
     val notes: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+
+    // Cached geocode of [address]. Nullable; absence is a normal state.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val formattedAddress: String? = null,
+    val placeId: String? = null,
+    val locationSource: String? = null,
+    val locationUpdatedAt: Long? = null
 )

@@ -17,5 +17,15 @@ data class OrderEntity(
     val confidence: Float = 1.0f,
     val needsClarification: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+
+    // Delivery location. All nullable and never required: an order must be
+    // creatable with no network and no location whatsoever.
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val formattedAddress: String? = null,
+    val placeId: String? = null,
+    /** MANUAL, GEOCODED, DEVICE_GPS - how the coordinates were obtained. */
+    val locationSource: String? = null,
+    val locationUpdatedAt: Long? = null
 )
