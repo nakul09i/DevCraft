@@ -1,16 +1,29 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
+# Gradle
+.gradle/
 /build
 /app/build
+build/
+
+# IDE
+*.iml
+.idea/
+.kotlin/
 /captures
 .externalNativeBuild
 .cxx
+
+# Local machine config (contains sdk.dir and API keys)
 local.properties
+secrets.properties
+
+# Secrets and credentials - never commit
+google-services.json
+*.jks
+*.keystore
+*.p12
+*.pem
+service-account*.json
+
+# OS
+.DS_Store
+Thumbs.db
