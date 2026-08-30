@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">DevCraft</string>
+    <string name="brand_name">DevCraft</string>
+    <string name="brand_byline">by Neutron</string>
 </resources>

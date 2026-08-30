@@ -11,6 +11,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.devcraft.ui.theme.DevCraftLockup
 
 @Composable
 fun DashboardScreen(
@@ -38,10 +39,7 @@ fun DashboardScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
-                Text(text = "DevCraft Dashboard", fontSize = 24.sp, fontWeight = FontWeight.Bold)
-                Text(text = "Offline-First Order Manager", fontSize = 14.sp, color = Color.Gray)
-            }
+            DevCraftLockup(markSize = 40.dp, nameSize = 22.sp)
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = if (isOnline) Color(0xFF4CAF50) else Color(0xFFFF9800),

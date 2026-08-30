@@ -19,16 +19,19 @@ import com.devcraft.data.local.entities.MessageSource
 import com.devcraft.ui.MainViewModel
 import com.devcraft.ui.components.DevCraftBottomNavBar
 import com.devcraft.ui.screens.*
+import com.devcraft.ui.theme.DevCraftTheme
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Swap the branded launch window background for the real app theme.
+        setTheme(R.style.Theme_DevCraft)
         super.onCreate(savedInstanceState)
         handleIntent(intent)
 
         setContent {
-            MaterialTheme {
+            DevCraftTheme {
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route

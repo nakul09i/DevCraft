@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Launch window background. On API 31+ the system generates its own splash
+    from the adaptive icon; this gives API 26-30 the same branded launch
+    instead of a bare white window.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/brand_navy" />
+    <item
+        android:width="88dp"
+        android:height="88dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_brand_d" />
+</layer-list>

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devcraft.data.local.entities.MessageEntity
 import com.devcraft.data.local.entities.MessageSource
+import com.devcraft.ui.theme.DevCraftMark
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -107,12 +108,7 @@ fun MessageInboxScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier.padding(24.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.MarkChatUnread,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
-                        )
+                        DevCraftMark(size = 56.dp)
                         Text(
                             text = "No Messages Found",
                             fontSize = 18.sp,

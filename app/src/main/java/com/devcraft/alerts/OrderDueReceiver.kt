@@ -6,6 +6,7 @@ import android.content.Intent
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.devcraft.DevCraftApplication
+import com.devcraft.R
 
 class OrderDueReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -13,7 +14,7 @@ class OrderDueReceiver : BroadcastReceiver() {
         val customerName = intent.getStringExtra("CUSTOMER_NAME") ?: "Customer"
 
         val builder = NotificationCompat.Builder(context, DevCraftApplication.CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.ic_brand_d)
             .setContentTitle("DevCraft: Order Due Alert!")
             .setContentText("Order for $customerName is due today.")
             .setPriority(NotificationCompat.PRIORITY_HIGH)

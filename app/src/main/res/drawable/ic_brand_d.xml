@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    DevCraft "D" mark. Monoline geometric construction on a 24x24 grid:
+    flat left stem, true semicircular bowl (r=10), uniform 5.2 stroke on all
+    four sides, generous counter so the letter stays readable down to ~16dp.
+    White on transparent so it can sit on the brand navy or be tinted by
+    Icon(tint=) / the notification system.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M4,2h6a10,10 0 0 1 0,20h-6z M9.2,7.2h0.8a4.8,4.8 0 0 1 0,9.6h-0.8z" />
+</vector>
