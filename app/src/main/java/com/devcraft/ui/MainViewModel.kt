@@ -16,7 +16,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
 import java.util.*
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -45,6 +44,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun consumePendingMessage() {
         _pendingMessageId.value = null
+    }
+
+    /** Consumable navigation target for a tapped due-date notification. */
+    private val _pendingOrderId = MutableStateFlow<String?>(null)
+    val pendingOrderId: StateFlow<String?> = _pendingOrderId.asStateFlow()
+
+    fun openOrder(orderId: String) {
+        _pendingOrderId.value = orderId
+    }
+
+    fun consumePendingOrder() {
+        _pendingOrderId.value = null
     }
 
     // Message Flows
@@ -279,34 +290,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 6. Side effect, deliberately outside the transaction
-            if (!dueDate.isNullOrBlank()) {
-                scheduleAlertForDueDate(orderId, resolvedCustomerName, dueDate)
-            }
+            alertScheduler.scheduleForDueDate(orderId, resolvedCustomerName, dueDate)
 
             withContext(Dispatchers.Main) {
                 onComplete(orderId)
             }
-        }
-    }
-
-    private fun scheduleAlertForDueDate(orderId: String, customerName: String, dueDateStr: String) {
-        try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val date = sdf.parse(dueDateStr)
-            if (date != null) {
-                val cal = Calendar.getInstance().apply {
-                    time = date
-                    set(Calendar.HOUR_OF_DAY, 9)
-                    set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0)
-                }
-                val triggerMillis = cal.timeInMillis
-                if (triggerMillis > System.currentTimeMillis()) {
-                    alertScheduler.scheduleDueNotification(orderId, customerName, triggerMillis)
-                }
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
     }
 
@@ -346,6 +334,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     changedFieldsJson = "{\"customerName\": \"$customerName\", \"status\": \"CONFIRMED\"}"
                 )
             }
+
+            alertScheduler.scheduleForDueDate(orderId, customerName, parsedMessage.due_date)
         }
     }
 
@@ -363,6 +353,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     changedFieldsJson = "{\"status\": \"$newStatus\"}"
                 )
             }
+
+            // A closed order should stop nagging the merchant.
+            if (newStatus == "COMPLETED" || newStatus == "CANCELLED") {
+                alertScheduler.cancel(orderId)
+            }
         }
     }
 
@@ -377,6 +372,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     changedFieldsJson = "{}"
                 )
             }
+            alertScheduler.cancel(orderId)
         }
     }
 

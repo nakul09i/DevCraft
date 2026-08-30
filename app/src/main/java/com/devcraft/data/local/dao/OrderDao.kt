@@ -33,6 +33,13 @@ interface OrderDao {
     @Query("SELECT * FROM orders WHERE rawMessage LIKE '%' || :query || '%' OR customerName LIKE '%' || :query || '%' ORDER BY createdAt DESC")
     fun searchOrders(query: String): Flow<List<OrderWithItems>>
 
+    /** Open orders that still have a due date, for re-arming alarms after reboot. */
+    @Query(
+        "SELECT * FROM orders WHERE dueDate IS NOT NULL AND dueDate != '' " +
+            "AND status NOT IN ('COMPLETED', 'CANCELLED')"
+    )
+    suspend fun getOrdersAwaitingDueDate(): List<OrderEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertOrder(order: OrderEntity)
 

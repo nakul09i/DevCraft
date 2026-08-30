@@ -1,10 +1,15 @@
 package com.devcraft
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -15,6 +20,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.devcraft.alerts.LocalAlertScheduler
 import com.devcraft.data.local.entities.MessageSource
 import com.devcraft.ui.MainViewModel
 import com.devcraft.ui.components.DevCraftBottomNavBar
@@ -24,10 +30,14 @@ import com.devcraft.ui.theme.DevCraftTheme
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
 
+    private val requestNotificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* alerts degrade silently */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Swap the branded launch window background for the real app theme.
         setTheme(R.style.Theme_DevCraft)
         super.onCreate(savedInstanceState)
+        ensureNotificationPermission()
         handleIntent(intent)
 
         setContent {
@@ -51,6 +61,15 @@ class MainActivity : ComponentActivity() {
                     pendingMessageId?.let { id ->
                         navController.navigate("message_detail/$id")
                         viewModel.consumePendingMessage()
+                    }
+                }
+
+                // Deep link from a tapped due-date notification
+                val pendingOrderId by viewModel.pendingOrderId.collectAsState()
+                LaunchedEffect(pendingOrderId) {
+                    pendingOrderId?.let { id ->
+                        navController.navigate("order_detail/$id")
+                        viewModel.consumePendingOrder()
                     }
                 }
 
@@ -198,8 +217,26 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
     }
 
+    /**
+     * POST_NOTIFICATIONS is runtime-granted from API 33. Without this the
+     * permission was declared but never requested, so every due-date alert was
+     * silently dropped on modern devices.
+     */
+    private fun ensureNotificationPermission() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     private fun handleIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_SEND && intent.type == "text/plain") {
+        if (intent == null) return
+
+        // Shared text from WhatsApp / SMS / any messaging app
+        if (intent.action == Intent.ACTION_SEND && intent.type == "text/plain") {
             val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
             val subject = intent.getStringExtra(Intent.EXTRA_SUBJECT)
             if (!sharedText.isNullOrBlank()) {
@@ -209,6 +246,12 @@ class MainActivity : ComponentActivity() {
                     senderName = subject
                 )
             }
+            return
+        }
+
+        // Tapped a due-date notification
+        intent.getStringExtra(LocalAlertScheduler.EXTRA_ORDER_ID)?.let { orderId ->
+            if (orderId.isNotBlank()) viewModel.openOrder(orderId)
         }
     }
 }
