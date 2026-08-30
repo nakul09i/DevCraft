@@ -110,12 +110,23 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable("dashboard") {
+                            val dueToday by viewModel.dueToday.collectAsState()
+                            val overdue by viewModel.overdue.collectAsState()
+                            val outstanding by viewModel.outstandingTotal.collectAsState()
+                            val committedCount by viewModel.committedThisWeekCount.collectAsState()
+                            val committedValue by viewModel.committedThisWeekValue.collectAsState()
+
                             DashboardScreen(
                                 isOnline = isOnline,
                                 totalOrders = orders.size,
                                 unreadMessageCount = unreadMsgCount,
                                 pendingSyncCount = pendingOps.size,
                                 conflictCount = conflicts.size,
+                                dueTodayCount = dueToday.size,
+                                overdueCount = overdue.size,
+                                outstandingTotal = outstanding,
+                                committedThisWeekCount = committedCount,
+                                committedThisWeekValue = committedValue,
                                 onToggleNetwork = { viewModel.toggleNetworkStatus() },
                                 onNavigateInbox = { navController.navigate("inbox") },
                                 onNavigateNewOrder = { navController.navigate("new_order") },

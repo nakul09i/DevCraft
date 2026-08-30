@@ -20,6 +20,11 @@ fun DashboardScreen(
     unreadMessageCount: Int,
     pendingSyncCount: Int,
     conflictCount: Int,
+    dueTodayCount: Int,
+    overdueCount: Int,
+    outstandingTotal: Double,
+    committedThisWeekCount: Int,
+    committedThisWeekValue: Double,
     onToggleNetwork: () -> Unit,
     onNavigateInbox: () -> Unit,
     onNavigateNewOrder: () -> Unit,
@@ -75,6 +80,44 @@ fun DashboardScreen(
 
         Spacer(modifier = Modifier.height(4.dp))
 
+        // Operational answers, all from local SQL - no network involved.
+        Text(text = "Today's Position", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OperationalTile(
+                label = "Due Today",
+                value = "$dueTodayCount",
+                emphasis = dueTodayCount > 0,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateOrders,
+            )
+            OperationalTile(
+                label = "Overdue",
+                value = "$overdueCount",
+                emphasis = overdueCount > 0,
+                isAlert = overdueCount > 0,
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateOrders,
+            )
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            OperationalTile(
+                label = "Outstanding",
+                value = "₹${"%,.0f".format(outstandingTotal)}",
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateOrders,
+            )
+            OperationalTile(
+                label = "Committed This Week",
+                value = "$committedThisWeekCount · ₹${"%,.0f".format(committedThisWeekValue)}",
+                modifier = Modifier.weight(1f),
+                onClick = onNavigateOrders,
+            )
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+
         // Quick Actions
         Text(text = "Quick Actions", fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
 
@@ -100,6 +143,44 @@ fun DashboardScreen(
             shape = RoundedCornerShape(12.dp)
         ) {
             Text("View All Orders", fontSize = 15.sp)
+        }
+    }
+}
+
+@Composable
+private fun OperationalTile(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    emphasis: Boolean = false,
+    isAlert: Boolean = false,
+    onClick: () -> Unit = {},
+) {
+    val container = when {
+        isAlert -> MaterialTheme.colorScheme.errorContainer
+        emphasis -> MaterialTheme.colorScheme.primaryContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    Card(
+        onClick = onClick,
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = container),
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(
+                text = label.uppercase(),
+                fontSize = 10.sp,
+                letterSpacing = 0.8.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (isAlert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }

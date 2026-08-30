@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.devcraft.DevCraftApplication
 import com.devcraft.alerts.LocalAlertScheduler
+import com.devcraft.data.local.dao.CustomerBalance
 import com.devcraft.data.local.dao.OrderWithItems
+import com.devcraft.domain.OperationalCalendar
 import com.devcraft.data.local.entities.*
 import com.devcraft.domain.model.ParsedItem
 import com.devcraft.domain.model.ParsedMessage
@@ -94,6 +96,38 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val conflicts: StateFlow<List<ConflictEntity>> = conflictDao.getAllConflicts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // --- Operational queries. Entirely local; answerable in airplane mode. ---
+
+    private val today = OperationalCalendar.today()
+    private val weekWindow = OperationalCalendar.weekWindow()
+
+    val dueToday: StateFlow<List<OrderWithItems>> = orderDao.getDueOn(today)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val overdue: StateFlow<List<OrderWithItems>> = orderDao.getOverdue(today)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val outstandingTotal: StateFlow<Double> = orderDao.getOutstandingTotal()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val customerBalances: StateFlow<List<CustomerBalance>> = orderDao.getCustomerBalances()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val committedThisWeekValue: StateFlow<Double> =
+        orderDao.getCommittedValueBetween(weekWindow.first, weekWindow.second)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0.0)
+
+    val committedThisWeekCount: StateFlow<Int> =
+        orderDao.getCommittedCountBetween(weekWindow.first, weekWindow.second)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    /** "What did this customer order last time, and with what specifications?" */
+    suspend fun lastOrderFor(customerName: String): OrderWithItems? =
+        withContext(Dispatchers.IO) { orderDao.getLastOrderForCustomer(customerName) }
+
+    fun ordersForCustomer(name: String): Flow<List<OrderWithItems>> =
+        orderDao.getOrdersForCustomer(name)
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
