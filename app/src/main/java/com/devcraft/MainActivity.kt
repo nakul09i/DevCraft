@@ -21,6 +21,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.devcraft.alerts.CapturedMessageNotifier
 import com.devcraft.alerts.LocalAlertScheduler
 import com.devcraft.data.local.entities.MessageSource
 import com.devcraft.ui.AuthViewModel
@@ -267,8 +268,10 @@ class MainActivity : ComponentActivity() {
                             MessageDetailScreen(
                                 message = message,
                                 onParseText = { viewModel.parseMessage(it) },
-                                onConfirmOrder = { msgId, custName, due, amt, items, raw, onDone ->
-                                    viewModel.convertMessageToOrder(msgId, custName, due, amt, items, raw, onDone)
+                                onConfirmOrder = { msgId, custName, due, amt, items, raw, address, onDone ->
+                                    viewModel.convertMessageToOrder(
+                                        msgId, custName, due, amt, items, raw, address, onDone
+                                    )
                                 },
                                 onNavigateOrderDetail = { orderId ->
                                     navController.navigate("order_detail/$orderId") {
@@ -340,6 +343,11 @@ class MainActivity : ComponentActivity() {
         // Tapped a due-date notification
         intent.getStringExtra(LocalAlertScheduler.EXTRA_ORDER_ID)?.let { orderId ->
             if (orderId.isNotBlank()) viewModel.openOrder(orderId)
+        }
+
+        // Tapped a "message captured" notification from background SMS capture
+        intent.getStringExtra(CapturedMessageNotifier.EXTRA_MESSAGE_ID)?.let { messageId ->
+            if (messageId.isNotBlank()) viewModel.openMessage(messageId)
         }
     }
 }

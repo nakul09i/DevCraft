@@ -99,6 +99,29 @@ object DeterministicParser {
     )
 
     private val SIZE_PATTERN: Pattern = Pattern.compile("(?:chest|size|saiz)\\s*([0-9\\u0966-\\u096F]+)")
+
+    /** Indian PIN codes are 6 digits and never start with 0. */
+    private val PINCODE_PATTERN: Pattern = Pattern.compile("\\b([1-9][0-9]{5})\\b")
+
+    /** Indian mobile numbers: 10 digits starting 6-9, optionally +91 prefixed. */
+    private val PHONE_PATTERN: Pattern = Pattern.compile("(?:\\+?91[\\s-]?)?\\b([6-9][0-9]{9})\\b")
+
+    /**
+     * Address vocabulary. A clause containing any of these, or a PIN code, is
+     * treated as the delivery address. Clause-based rather than window-based
+     * because Indian addresses are comma-separated in practice.
+     */
+    private val ADDRESS_TOKENS = setOf(
+        "address", "pata", "पता",
+        "shop", "plot", "flat", "house", "makan", "दुकान", "मकान",
+        "nagar", "colony", "sector", "road", "rd", "gali", "marg", "chowk",
+        "bazar", "bazaar", "market", "mandi", "vihar", "puram", "ganj", "tola",
+        "नगर", "कॉलोनी", "सेक्टर", "रोड", "गली", "मार्ग", "चौक", "बाजार", "मार्केट",
+        "near", "opposite", "opp", "behind", "beside", "paas", "पास", "सामने",
+        "landmark", "pin", "pincode",
+    )
+
+    private val CLAUSE_SPLIT = Regex("[,;|\\n\\r]+|\\s+-\\s+")
     // \p{M} is essential: Devanagari matras and the anusvara are combining marks,
     // not letters. Without it "परसों" shreds to "परस" and "बोरी" to "बोर".
     private val TOKEN_SPLIT = Regex("[^\\p{L}\\p{M}\\p{N}.]+")
@@ -115,7 +138,20 @@ object DeterministicParser {
         val amountDigits = extractAmountDigits(lower)
         val amount = amountDigits?.let { toAsciiDigits(it)?.toDoubleOrNull() }
 
-        val quantity = extractQuantity(tokens, amountDigits)
+        // Order matters: amount, then phone, then pincode. Each consumed digit
+        // string is excluded from quantity, so "452001" or a mobile number is
+        // never mistaken for "how many".
+        val phone = extractPhone(trimmed, amountDigits)
+        val pincode = extractPincode(trimmed, amountDigits, phone)
+        val deliveryAddress = extractDeliveryAddress(trimmed, pincode)
+
+        val consumedDigits = listOfNotNull(
+            amountDigits?.let { toAsciiDigits(it) },
+            phone?.filter { it.isDigit() },
+            pincode,
+        )
+
+        val quantity = extractQuantity(tokens, consumedDigits)
         val customer = extractCustomer(trimmed)
         val dueDate = resolveDueDate(tokens, lower)
         val referencesPrior = tokens.any { it in PRIOR_ORDER_TOKENS } ||
@@ -127,7 +163,13 @@ object DeterministicParser {
             if (m.find()) toAsciiDigits(m.group(1) ?: "")?.let { attributes["size"] = it }
         }
 
-        val description = extractItemDescription(tokens, customer, attributes.values)
+        // Address words must not leak into the item description.
+        val addressTokens = deliveryAddress
+            ?.let { tokenize(it.lowercase(Locale.ROOT)) }
+            ?.toSet()
+            ?: emptySet()
+
+        val description = extractItemDescription(tokens, customer, attributes.values, addressTokens)
         val item = ParsedItem(
             description = description.ifBlank { "Order Item" },
             quantity = quantity ?: 1,
@@ -152,6 +194,9 @@ object DeterministicParser {
             references_prior_order = referencesPrior,
             confidence = confidence,
             needs_clarification = confidence < 0.7f,
+            delivery_address = deliveryAddress,
+            pincode = pincode,
+            phone = phone,
         )
     }
 
@@ -175,6 +220,52 @@ object DeterministicParser {
         return sb.toString()
     }
 
+    /** Explicit phone number, if stated. Never inferred. */
+    private fun extractPhone(text: String, amountDigits: String?): String? {
+        val m = PHONE_PATTERN.matcher(text)
+        while (m.find()) {
+            val candidate = m.group(1) ?: continue
+            // Do not steal the amount if the message says "Rs 9876543210".
+            if (candidate == amountDigits) continue
+            return candidate
+        }
+        return null
+    }
+
+    private fun extractPincode(text: String, amountDigits: String?, phone: String?): String? {
+        val m = PINCODE_PATTERN.matcher(text)
+        while (m.find()) {
+            val candidate = m.group(1) ?: continue
+            if (candidate == amountDigits) continue
+            // A 6-digit run inside a 10-digit mobile number is not a PIN code.
+            if (phone != null && phone.contains(candidate)) continue
+            return candidate
+        }
+        return null
+    }
+
+    /**
+     * Delivery address, text only. Splits on commas/semicolons/newlines and keeps
+     * clauses that look like an address - one containing address vocabulary or a
+     * PIN code. No geocoding, so this needs no API key and works offline.
+     */
+    private fun extractDeliveryAddress(text: String, pincode: String?): String? {
+        val clauses = text.split(CLAUSE_SPLIT).map { it.trim() }.filter { it.isNotEmpty() }
+        if (clauses.isEmpty()) return null
+
+        val addressClauses = clauses.filter { clause ->
+            val clauseTokens = tokenize(clause.lowercase(Locale.ROOT))
+            clauseTokens.any { it in ADDRESS_TOKENS } ||
+                (pincode != null && clause.contains(pincode))
+        }
+        if (addressClauses.isEmpty()) return null
+
+        return addressClauses.joinToString(", ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+            .takeIf { it.isNotBlank() }
+    }
+
     private fun extractAmountDigits(lowerText: String): String? {
         val m = AMOUNT_PATTERN.matcher(lowerText)
         if (!m.find()) return null
@@ -186,15 +277,14 @@ object DeterministicParser {
      * measurement (chest 40, size 42). Returns null when no quantity was stated,
      * which lowers confidence rather than silently defaulting to 1.
      */
-    private fun extractQuantity(tokens: List<String>, amountDigits: String?): Int? {
-        val amountAscii = amountDigits?.let { toAsciiDigits(it) }
+    private fun extractQuantity(tokens: List<String>, consumedDigits: List<String>): Int? {
         tokens.forEachIndexed { i, token ->
             val prev = tokens.getOrNull(i - 1) ?: ""
             val next = tokens.getOrNull(i + 1) ?: ""
 
             val digits = toAsciiDigits(token)
             if (digits != null) {
-                val isAmount = digits == amountAscii || prev in CURRENCY || next in CURRENCY
+                val isAmount = digits in consumedDigits || prev in CURRENCY || next in CURRENCY
                 val isMeasure = prev in MEASURE_PREFIX
                 if (!isAmount && !isMeasure) {
                     digits.toIntOrNull()?.let { if (it > 0) return it }
@@ -261,12 +351,14 @@ object DeterministicParser {
         tokens: List<String>,
         customer: String?,
         attributeValues: Collection<String>,
+        addressTokens: Set<String> = emptySet(),
     ): String {
         val customerToken = customer?.lowercase(Locale.ROOT)
         val attributeTokens = attributeValues.flatMap { it.split(" ") }.toSet()
 
         return tokens.filterNot { token ->
-            token in DESCRIPTION_NOISE ||
+            token in addressTokens ||
+                token in DESCRIPTION_NOISE ||
                 token in HONORIFICS ||
                 token in CURRENCY ||
                 token in TODAY || token in TOMORROW || token in DAY_AFTER ||

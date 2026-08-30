@@ -125,6 +125,50 @@ fun OrderDetailScreen(
                 }
             }
 
+            // Delivery location, when the message contained one
+            if (!order.formattedAddress.isNullOrBlank()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
+                        Icon(
+                            Icons.Default.LocationOn,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "DELIVERY ADDRESS",
+                                fontSize = 10.sp,
+                                letterSpacing = 0.8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = order.formattedAddress, fontSize = 14.sp)
+                            if (order.latitude == null) {
+                                Text(
+                                    text = "Text only - map coordinates need a Mappls key",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // Order Items Section
             Text("Order Items (${items.size})", fontWeight = FontWeight.Bold, fontSize = 16.sp)
 

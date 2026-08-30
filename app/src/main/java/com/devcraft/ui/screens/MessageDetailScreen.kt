@@ -22,6 +22,55 @@ import com.devcraft.domain.model.ParsedMessage
 import java.text.SimpleDateFormat
 import java.util.*
 
+/**
+ * Compact key/value table of what the parser understood. Deliberately a table:
+ * a merchant scanning a screen needs to spot a wrong quantity or a missing
+ * address in one glance, which prose does not allow.
+ */
+@Composable
+private fun InterpretationTable(rows: List<Pair<String, String>>) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+        ),
+    ) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            rows.forEachIndexed { index, (label, value) ->
+                val missing = value == "—"
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(0.4f),
+                    )
+                    Text(
+                        text = value,
+                        fontSize = 13.sp,
+                        fontWeight = if (missing) FontWeight.Normal else FontWeight.SemiBold,
+                        color = if (missing) MaterialTheme.colorScheme.onSurfaceVariant
+                        else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(0.6f),
+                    )
+                }
+                if (index != rows.lastIndex) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(horizontal = 14.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                    )
+                }
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageDetailScreen(
@@ -34,6 +83,7 @@ fun MessageDetailScreen(
         amount: Double?,
         items: List<ParsedItem>,
         rawMessage: String,
+        deliveryAddress: String?,
         onComplete: (String) -> Unit
     ) -> Unit,
     onNavigateOrderDetail: (String) -> Unit,
@@ -61,6 +111,13 @@ fun MessageDetailScreen(
     var confidence by remember { mutableStateOf(initialParsed.confidence) }
     var needsClarification by remember { mutableStateOf(initialParsed.needs_clarification) }
 
+    var deliveryAddress by remember {
+        mutableStateOf(
+            listOfNotNull(initialParsed.delivery_address, initialParsed.pincode)
+                .joinToString(" ")
+                .trim()
+        )
+    }
     var isSubmitting by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -229,6 +286,25 @@ fun MessageDetailScreen(
                 }
             }
 
+            // Interpretation table: everything the parser resolved, at a glance.
+            InterpretationTable(
+                rows = listOf(
+                    "Customer" to (initialParsed.customer ?: "—"),
+                    "Phone" to (initialParsed.phone ?: "—"),
+                    "Item" to (initialParsed.items.firstOrNull()?.description ?: "—"),
+                    "Quantity" to (initialParsed.items.firstOrNull()?.quantity?.toString() ?: "—"),
+                    "Amount" to (initialParsed.amount?.let { "₹%.0f".format(it) } ?: "—"),
+                    "Due date" to (initialParsed.due_date ?: "—"),
+                    "Delivery address" to (initialParsed.delivery_address ?: "—"),
+                    "PIN code" to (initialParsed.pincode ?: "—"),
+                    "Repeat order" to if (initialParsed.references_prior_order) "Yes" else "No",
+                ) + initialParsed.items.firstOrNull()?.attributes?.map { (k, v) ->
+                    k.replaceFirstChar { it.uppercase() } to v
+                }.orEmpty(),
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
+
             // Editable Parsed Fields
             OutlinedTextField(
                 value = customerName,
@@ -261,6 +337,23 @@ fun MessageDetailScreen(
                     enabled = !isConverted
                 )
             }
+
+            OutlinedTextField(
+                value = deliveryAddress,
+                onValueChange = { deliveryAddress = it },
+                label = { Text("Delivery address (optional)") },
+                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !isConverted,
+                minLines = 2,
+                supportingText = {
+                    Text(
+                        text = if (initialParsed.hasLocation) "Read from the message text"
+                        else "None found in the message - add it if you know it",
+                        fontSize = 11.sp,
+                    )
+                },
+            )
 
             // Items List
             Text("Extracted Items (${items.size})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
@@ -321,7 +414,8 @@ fun MessageDetailScreen(
                             if (dueDate.isNotBlank()) dueDate else null,
                             amount,
                             items,
-                            message.originalText
+                            message.originalText,
+                            deliveryAddress.trim().takeIf { it.isNotBlank() }
                         ) { newOrderId ->
                             isSubmitting = false
                             onNavigateOrderDetail(newOrderId)

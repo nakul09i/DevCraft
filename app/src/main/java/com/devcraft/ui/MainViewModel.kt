@@ -84,6 +84,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _pendingMessageId.value = null
     }
 
+    /** Open a specific message, e.g. from a captured-message notification. */
+    fun openMessage(messageId: String) {
+        _pendingMessageId.value = messageId
+    }
+
     /** Consumable navigation target for a tapped due-date notification. */
     private val _pendingOrderId = MutableStateFlow<String?>(null)
     val pendingOrderId: StateFlow<String?> = _pendingOrderId.asStateFlow()
@@ -264,6 +269,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         amount: Double?,
         items: List<ParsedItem>,
         rawMessage: String,
+        deliveryAddress: String? = null,
         onComplete: (String) -> Unit
     ) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -308,7 +314,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         confidence = 1.0f,
                         needsClarification = false,
                         createdAt = now,
-                        updatedAt = now
+                        updatedAt = now,
+                        // Text address only. Coordinates stay null until a
+                        // mapping provider is configured; nothing here needs one.
+                        formattedAddress = deliveryAddress,
+                        locationSource = deliveryAddress?.let { "MESSAGE_TEXT" },
+                        locationUpdatedAt = deliveryAddress?.let { now }
                     )
                 )
 

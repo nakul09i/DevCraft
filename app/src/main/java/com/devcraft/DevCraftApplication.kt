@@ -31,21 +31,33 @@ class DevCraftApplication : Application() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+        manager.createNotificationChannel(
+            NotificationChannel(
                 CHANNEL_ID,
-                "DevCraft Order Due Alerts",
+                "Order due alerts",
                 NotificationManager.IMPORTANCE_HIGH
+            ).apply { description = "Reminders for orders due today or upcoming" }
+        )
+
+        // Separate channel so captured-message pings can be silenced without
+        // also silencing due-date reminders.
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CAPTURE_CHANNEL_ID,
+                "Captured messages",
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
-                description = "Notifications for orders due today or upcoming"
+                description = "A new SMS or shared message was captured and interpreted"
             }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
-        }
+        )
     }
 
     companion object {
         const val CHANNEL_ID = "devcraft_order_due_channel"
+        const val CAPTURE_CHANNEL_ID = "devcraft_captured_message_channel"
         private const val PREFS = "devcraft_prefs"
         private const val KEY_DEVICE_ID = "device_id"
     }

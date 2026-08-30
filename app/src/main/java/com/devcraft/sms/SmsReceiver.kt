@@ -6,8 +6,10 @@ import android.content.Intent
 import android.provider.Telephony
 import android.util.Log
 import com.devcraft.DevCraftApplication
+import com.devcraft.alerts.CapturedMessageNotifier
 import com.devcraft.core.AppSettings
 import com.devcraft.data.ingest.MessageIngestor
+import com.devcraft.parser.offline.DeterministicParser
 import com.devcraft.data.local.database.DevCraftDatabase
 import com.devcraft.data.local.entities.MessageSource
 import kotlinx.coroutines.CoroutineScope
@@ -69,7 +71,21 @@ class SmsReceiver : BroadcastReceiver() {
                     sender = sender,
                     senderName = null,
                 )
-                Log.i(TAG, if (id != null) "Ingested SMS as message $id" else "SMS body was blank")
+                if (id != null) {
+                    Log.i(TAG, "Ingested SMS as message $id")
+                    // The app is probably closed; tell the merchant it landed.
+                    val parsed = DeterministicParser.parse(body)
+                    CapturedMessageNotifier.notifyCaptured(
+                        context = appContext,
+                        messageId = id,
+                        source = "SMS",
+                        preview = body,
+                        confidence = parsed.confidence,
+                        needsReview = parsed.needs_clarification,
+                    )
+                } else {
+                    Log.i(TAG, "SMS ignored: blank or duplicate")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to ingest incoming SMS", e)
             } finally {
