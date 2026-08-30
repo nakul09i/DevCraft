@@ -212,6 +212,10 @@ class MainActivity : ComponentActivity() {
                             val syncErr by viewModel.syncError.collectAsState()
                             val smsEnabled by viewModel.smsCaptureEnabled.collectAsState()
                             val notifEnabled by viewModel.notificationCaptureEnabled.collectAsState()
+                            val diags by viewModel.diagnostics.collectAsState()
+
+                            // Refresh on entry: a receiver may have written since.
+                            LaunchedEffect(Unit) { viewModel.refreshDiagnostics() }
                             val messages by viewModel.allMessages.collectAsState()
 
                             SettingsScreen(
@@ -242,6 +246,8 @@ class MainActivity : ComponentActivity() {
                                         startActivity(DevCraftNotificationListener.accessSettingsIntent())
                                     }
                                 },
+                                diagnostics = diags,
+                                onRefreshDiagnostics = viewModel::refreshDiagnostics,
                                 orderCount = orders.size,
                                 messageCount = messages.size,
                                 conflictCount = conflicts.size,

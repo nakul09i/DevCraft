@@ -1,1 +1,1 @@
-db397aed3132665962f42e3c833e995dce75b97f77905088acbb6ade03f32f48  DevCraft-Master-debug.apk
+500f6acb1ae32b3a76d5e273ba9fd4f153806e3e86dbf9badd527ad9747dccc0  DevCraft-Master-debug.apk

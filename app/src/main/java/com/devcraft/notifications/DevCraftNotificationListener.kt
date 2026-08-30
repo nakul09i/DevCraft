@@ -40,30 +40,60 @@ import kotlinx.coroutines.launch
  */
 class DevCraftNotificationListener : NotificationListenerService() {
 
+    override fun onListenerConnected() {
+        // Android has actually bound us. Surfaced in Settings so a silent
+        // never-connected state is visible instead of looking like "idle".
+        AppSettings.setListenerConnected(applicationContext, true)
+    }
+
+    override fun onListenerDisconnected() {
+        AppSettings.setListenerConnected(applicationContext, false)
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val context = applicationContext
 
-        if (!AppSettings.isNotificationCaptureEnabled(context)) return
+        if (!AppSettings.isNotificationCaptureEnabled(context)) {
+            AppSettings.recordSkip(context, "Notification capture is switched off")
+            return
+        }
 
         // Never read our own notifications back in.
         if (sbn.packageName == context.packageName) return
-        if (sbn.packageName !in SUPPORTED_PACKAGES) return
+
+        AppSettings.recordSeen(context, AppSettings.Channel.NOTIFICATION)
+
+        if (sbn.packageName !in SUPPORTED_PACKAGES) {
+            AppSettings.recordSkip(context, "Ignored ${sbn.packageName} (not a messaging app)")
+            return
+        }
 
         val extras = sbn.notification?.extras ?: return
 
         // Group summaries carry no usable body ("3 new messages"). Skip them.
         val isGroupSummary =
             (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0
-        if (isGroupSummary) return
+        if (isGroupSummary) {
+            AppSettings.recordSkip(context, "Skipped a grouped summary notification")
+            return
+        }
 
         val sender = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
-        val body = extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
-            ?: extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+        val body = extractBody(extras)
 
-        if (body.isNullOrBlank()) return
-        if (isNonMessageNoise(body, sender)) return
+        if (body.isNullOrBlank()) {
+            AppSettings.recordSkip(context, "Notification had no readable text")
+            return
+        }
+        if (isNonMessageNoise(body, sender)) {
+            AppSettings.recordSkip(context, "Skipped chat noise: \"${body.take(40)}\"")
+            return
+        }
         // Authentication codes must never become orders.
-        if (SmsReceiver.looksLikeVerificationCode(body)) return
+        if (SmsReceiver.looksLikeVerificationCode(body)) {
+            AppSettings.recordSkip(context, "Skipped a verification code")
+            return
+        }
 
         val deviceId = (context as? DevCraftApplication)?.deviceId ?: return
         val appLabel = SUPPORTED_PACKAGES[sbn.packageName] ?: "Notification"
@@ -78,6 +108,10 @@ class DevCraftNotificationListener : NotificationListenerService() {
                     senderName = sender,
                 )
                 if (id != null) {
+                    AppSettings.recordCapture(
+                        context, AppSettings.Channel.NOTIFICATION, System.currentTimeMillis()
+                    )
+                    AppSettings.recordSkip(context, "Captured from $appLabel")
                     val parsed = DeterministicParser.parse(body)
                     CapturedMessageNotifier.notifyCaptured(
                         context = context,
@@ -117,6 +151,25 @@ class DevCraftNotificationListener : NotificationListenerService() {
             "backup in progress", "tap to view", "photo", "video", "voice message",
             "sticker", "gif", "document", "deleted this message",
         )
+
+        /**
+         * WhatsApp and Telegram often post MessagingStyle notifications where the
+         * body lives in EXTRA_TEXT_LINES rather than EXTRA_TEXT. Reading only
+         * EXTRA_TEXT missed those entirely, which is a common reason capture
+         * appears to do nothing. Takes the newest line.
+         */
+        fun extractBody(extras: android.os.Bundle): String? {
+            extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+                ?.mapNotNull { it?.toString()?.trim() }
+                ?.lastOrNull { it.isNotBlank() }
+                ?.let { return it }
+
+            extras.getCharSequence(Notification.EXTRA_BIG_TEXT)?.toString()
+                ?.takeIf { it.isNotBlank() }?.let { return it }
+
+            return extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+                ?.takeIf { it.isNotBlank() }
+        }
 
         fun isNonMessageNoise(body: String, sender: String?): Boolean {
             val lower = body.trim().lowercase()

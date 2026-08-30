@@ -7,6 +7,7 @@ import androidx.room.withTransaction
 import com.devcraft.DevCraftApplication
 import com.devcraft.alerts.LocalAlertScheduler
 import com.devcraft.core.AppSettings
+import com.devcraft.core.CaptureDiagnostics
 import com.devcraft.core.ConnectionState
 import com.devcraft.core.ConnectivityObserver
 import com.devcraft.core.SyncStatus
@@ -73,6 +74,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setSmsCaptureEnabled(enabled: Boolean) = settings.setSmsCaptureEnabled(enabled)
     fun setNotificationCaptureEnabled(enabled: Boolean) =
         settings.setNotificationCaptureEnabled(enabled)
+
+    // Diagnostics are written by a receiver and a service in other entry points,
+    // so they are pulled on demand rather than observed.
+    private val _diagnostics = MutableStateFlow(settings.diagnostics())
+    val diagnostics: StateFlow<CaptureDiagnostics> = _diagnostics.asStateFlow()
+
+    fun refreshDiagnostics() {
+        _diagnostics.value = settings.diagnostics()
+    }
 
     /**
      * Consumable navigation target for an ingested share. A StateFlow, not a

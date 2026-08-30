@@ -2,6 +2,8 @@
 <resources>
     <!-- DevCraft brand -->
     <color name="brand_navy">#FF14213D</color>
+    <!-- The single accent in the identity: the bubble tail and status highlights -->
+    <color name="brand_amber">#FFF5A524</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
 </resources>

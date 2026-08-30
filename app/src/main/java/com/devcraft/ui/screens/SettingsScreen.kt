@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.devcraft.core.CaptureDiagnostics
 import com.devcraft.core.SyncStatus
 import com.devcraft.ui.theme.DevCraftLockup
 import java.text.SimpleDateFormat
@@ -42,6 +43,8 @@ fun SettingsScreen(
     notificationAccessGranted: Boolean,
     onNotificationCaptureChange: (Boolean) -> Unit,
     onOpenNotificationAccess: () -> Unit,
+    diagnostics: CaptureDiagnostics,
+    onRefreshDiagnostics: () -> Unit,
     // Data
     orderCount: Int,
     messageCount: Int,
@@ -238,6 +241,72 @@ fun SettingsScreen(
                 )
             }
 
+            // ---------- Capture diagnostics ----------
+            // The point of this section: a channel that captures nothing looks
+            // identical to one that is working but idle. This tells them apart.
+            SettingsSection("Capture status") {
+                DiagnosticRow(
+                    label = "SMS events seen",
+                    value = "${diagnostics.smsSeenCount}",
+                    ok = diagnostics.smsSeenCount > 0,
+                    hint = if (diagnostics.smsSeenCount == 0)
+                        "No SMS has reached the app yet. If you are testing with " +
+                            "Google Messages between two Android phones, that is RCS, " +
+                            "which does not fire an SMS broadcast."
+                    else null,
+                )
+                DiagnosticRow(
+                    label = "Last SMS captured",
+                    value = diagnostics.lastSmsCaptureAt.asTimeOrNever(),
+                    ok = diagnostics.lastSmsCaptureAt != null,
+                )
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                DiagnosticRow(
+                    label = "Listener connected",
+                    value = if (diagnostics.listenerConnected) "Yes" else "No",
+                    ok = diagnostics.listenerConnected,
+                    hint = if (!diagnostics.listenerConnected)
+                        "Android has not bound the service. Grant notification access, " +
+                            "and if it was granted before this build, reinstall the app - " +
+                            "Android caches the listener list at install time."
+                    else null,
+                )
+                DiagnosticRow(
+                    label = "Notifications seen",
+                    value = "${diagnostics.notificationSeenCount}",
+                    ok = diagnostics.notificationSeenCount > 0,
+                )
+                DiagnosticRow(
+                    label = "Last notification captured",
+                    value = diagnostics.lastNotificationCaptureAt.asTimeOrNever(),
+                    ok = diagnostics.lastNotificationCaptureAt != null,
+                )
+                if (!diagnostics.lastSkipReason.isNullOrBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(
+                                "LAST EVENT",
+                                fontSize = 10.sp,
+                                letterSpacing = 0.8.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(diagnostics.lastSkipReason, fontSize = 12.sp)
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(onClick = onRefreshDiagnostics, modifier = Modifier.fillMaxWidth()) {
+                    Text("Refresh status")
+                }
+            }
+
             // ---------- Data ----------
             SettingsSection("Local data") {
                 SettingsRow(label = "Orders", value = "$orderCount")
@@ -313,6 +382,40 @@ private fun SettingsRow(label: String, value: String, hint: String? = null) {
         }
     }
 }
+
+@Composable
+private fun DiagnosticRow(label: String, value: String, ok: Boolean, hint: String? = null) {
+    Column(modifier = Modifier.padding(vertical = 4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    value,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (ok) MaterialTheme.colorScheme.onSurface
+                    else MaterialTheme.colorScheme.error,
+                )
+            }
+        }
+        if (hint != null) {
+            Text(
+                hint,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+        }
+    }
+}
+
+private fun Long?.asTimeOrNever(): String = this?.let {
+    SimpleDateFormat("dd MMM, HH:mm:ss", Locale.getDefault()).format(Date(it))
+} ?: "Never"
 
 @Composable
 private fun StatusPill(status: SyncStatus) {

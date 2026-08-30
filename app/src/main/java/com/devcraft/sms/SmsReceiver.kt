@@ -36,9 +36,12 @@ class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
 
+        AppSettings.recordSeen(context, AppSettings.Channel.SMS)
+
         // Setting is OFF by default; when off we do not even look at the message.
         if (!AppSettings.isSmsCaptureEnabled(context)) {
             Log.i(TAG, "SMS order capture is off; ignoring broadcast")
+            AppSettings.recordSkip(context, "SMS arrived but capture is switched off")
             return
         }
 
@@ -52,9 +55,13 @@ class SmsReceiver : BroadcastReceiver() {
         val body = parts.joinToString("") { it.displayMessageBody ?: "" }
         val sender = parts.firstOrNull()?.displayOriginatingAddress
 
-        if (body.isBlank()) return
+        if (body.isBlank()) {
+            AppSettings.recordSkip(context, "SMS had no text body")
+            return
+        }
         if (looksLikeVerificationCode(body)) {
             Log.i(TAG, "Ignoring an authentication/OTP style SMS")
+            AppSettings.recordSkip(context, "Skipped a verification-code SMS")
             return
         }
 
@@ -73,6 +80,10 @@ class SmsReceiver : BroadcastReceiver() {
                 )
                 if (id != null) {
                     Log.i(TAG, "Ingested SMS as message $id")
+                    AppSettings.recordCapture(
+                        appContext, AppSettings.Channel.SMS, System.currentTimeMillis()
+                    )
+                    AppSettings.recordSkip(appContext, "Captured an SMS")
                     // The app is probably closed; tell the merchant it landed.
                     val parsed = DeterministicParser.parse(body)
                     CapturedMessageNotifier.notifyCaptured(
@@ -85,6 +96,10 @@ class SmsReceiver : BroadcastReceiver() {
                     )
                 } else {
                     Log.i(TAG, "SMS ignored: blank or duplicate")
+                    AppSettings.recordSkip(
+                        appContext,
+                        "SMS ignored: identical text already captured in the last 10 minutes"
+                    )
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to ingest incoming SMS", e)

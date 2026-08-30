@@ -1,24 +1,29 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    DevCraft mark. Geometric monoline "D" with a message-bubble tail on the
-    bottom-left of the stem - the product turns a conversation into an order, so
-    the mark carries that one idea and nothing else.
+    DevCraft mark. Geometric monoline "D" with a message-bubble tail: the product
+    turns a conversation into an order, and the mark carries that one idea.
+    The tail is the brand amber, the only accent in the whole identity.
 
-    24x24 grid. Stem and bowl share a uniform 4.6 stroke; the bowl is a true
-    semicircle (r=8.75). The tail is part of the same outline, not a second
-    shape, so evenOdd cuts only the counter. Counter is 8.3 tall (~39% of glyph
-    height) so the letter still reads at 24dp.
+    24x24 grid. Uniform 4.6 stroke, true semicircular bowl (r=8.75), counter 8.3
+    tall (~39% of glyph height) so the letter still reads at 24dp, where the tail
+    degrades to a small accent rather than disappearing awkwardly.
 
-    White on transparent: sits on the brand navy, or gets tinted by Icon(tint=)
-    and by the notification system.
+    Two paths on purpose, so the tail can be amber. Render with Image(), not
+    Icon(), or the tint will flatten both to one colour. The notification system
+    and the API 33+ monochrome layer flatten it deliberately - that is expected.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+    <!-- D body with its counter cut out -->
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M4,1.5H10.75A8.75,8.75 0 0 1 10.75,19H7.8L4,22.8Z M8.6,6.1h2.15a4.15,4.15 0 0 1 0,8.3h-2.15z" />
+        android:pathData="M4,1.5H10.75A8.75,8.75 0 0 1 10.75,19H4Z M8.6,6.1h2.15a4.15,4.15 0 0 1 0,8.3h-2.15z" />
+    <!-- Message-bubble tail -->
+    <path
+        android:fillColor="#FFF5A524"
+        android:pathData="M4,19H7.8L4,22.8Z" />
 </vector>

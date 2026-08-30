@@ -1,5 +1,6 @@
 package com.devcraft.ui.theme
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,9 @@ import com.devcraft.R
 
 val BrandNavy = Color(0xFF14213D)
 val BrandSteel = Color(0xFF4A6491)
+
+/** The single accent in the identity: bubble tail, and status highlights. */
+val BrandAmber = Color(0xFFF5A524)
 
 // ponytail: light scheme only. Screens still carry ~30 hardcoded light-mode
 // hex colors, so adding a dark scheme here would make them unreadable rather
@@ -74,10 +78,11 @@ fun DevCraftMark(
             .background(containerColor),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
+        // Image, not Icon: the mark is two-tone (white D, amber tail) and
+        // Icon's tint would flatten both fills to one colour.
+        Image(
             painter = painterResource(R.drawable.ic_brand_d),
             contentDescription = null,
-            tint = markColor,
             // 0.58 matches the optical balance checked against the rendered mark;
             // the bubble tail makes the glyph taller than a plain D.
             modifier = Modifier.size(size * 0.58f),
