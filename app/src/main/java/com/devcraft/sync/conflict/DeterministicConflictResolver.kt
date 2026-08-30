@@ -3,38 +3,46 @@ package com.devcraft.sync.conflict
 import com.devcraft.data.local.dao.ConflictDao
 import com.devcraft.data.local.entities.ConflictEntity
 
+/**
+ * Persistence wrapper around [MergeEngine].
+ *
+ * The merge itself is pure and lives in MergeEngine so it can be tested against
+ * every permutation of an operation set. This layer only records the outcome, so
+ * that every losing value becomes visible to the merchant in the Conflicts
+ * screen instead of being dropped.
+ */
 object DeterministicConflictResolver {
-    suspend fun resolveAndLog(
+
+    /**
+     * Merges [operations] for one entity and writes every losing value to the
+     * conflict log. Returns the merged outcome for the caller to apply to Room.
+     */
+    suspend fun mergeAndLog(
         conflictDao: ConflictDao,
-        entityId: String,
-        entityType: String,
-        field: String,
-        localValue: String?,
-        remoteValue: String?,
-        localTimestamp: Long,
-        remoteTimestamp: Long,
-        localDeviceId: String,
-        remoteDeviceId: String
-    ): String? {
-        val (winningValue, reason) = when {
-            remoteTimestamp > localTimestamp -> Pair(remoteValue, "REMOTE_TIMESTAMP_HIGHER")
-            localTimestamp > remoteTimestamp -> Pair(localValue, "LOCAL_TIMESTAMP_HIGHER")
-            else -> {
-                if (remoteDeviceId > localDeviceId) Pair(remoteValue, "DEVICE_ID_TIE_BREAKER_REMOTE")
-                else Pair(localValue, "DEVICE_ID_TIE_BREAKER_LOCAL")
-            }
+        operations: List<FieldOperation>,
+    ): MergeOutcome {
+        val outcome = MergeEngine.merge(operations)
+
+        for (conflict in outcome.conflicts) {
+            conflictDao.insertConflict(
+                ConflictEntity(
+                    entityId = conflict.entityId,
+                    entityType = conflict.entityType,
+                    field = conflict.field,
+                    // The existing columns predate the device-agnostic merge, so
+                    // losing maps to localValue and winning to remoteValue.
+                    localValue = conflict.losingValue,
+                    remoteValue = conflict.winningValue,
+                    winningValue = conflict.winningValue,
+                    resolutionReason = buildString {
+                        append(conflict.resolutionReason)
+                        append(" (won: ").append(conflict.winningDeviceId)
+                        append(", lost: ").append(conflict.losingDeviceId).append(')')
+                    },
+                )
+            )
         }
 
-        val conflict = ConflictEntity(
-            entityId = entityId,
-            entityType = entityType,
-            field = field,
-            localValue = localValue,
-            remoteValue = remoteValue,
-            winningValue = winningValue,
-            resolutionReason = reason
-        )
-        conflictDao.insertConflict(conflict)
-        return winningValue
+        return outcome
     }
 }
