@@ -16,6 +16,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devcraft.data.local.dao.OrderWithItems
+import com.devcraft.ui.components.OrderStatusPill
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +87,7 @@ fun OrdersListScreen(
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 16.sp
                                     )
-                                    OrderStatusBadge(status = item.order.status)
+                                    OrderStatusPill(status = item.order.status)
                                 }
 
                                 Spacer(modifier = Modifier.height(6.dp))

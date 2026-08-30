@@ -3,6 +3,8 @@ package com.devcraft.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -99,6 +101,7 @@ fun DashboardScreen(
             OperationalTile(
                 label = "Due Today",
                 value = "$dueTodayCount",
+                icon = Icons.Default.Today,
                 emphasis = dueTodayCount > 0,
                 modifier = Modifier.weight(1f),
                 onClick = onNavigateOrders,
@@ -106,6 +109,7 @@ fun DashboardScreen(
             OperationalTile(
                 label = "Overdue",
                 value = "$overdueCount",
+                icon = Icons.Default.ReportProblem,
                 emphasis = overdueCount > 0,
                 isAlert = overdueCount > 0,
                 modifier = Modifier.weight(1f),
@@ -117,12 +121,14 @@ fun DashboardScreen(
             OperationalTile(
                 label = "Outstanding",
                 value = "₹${"%,.0f".format(outstandingTotal)}",
+                icon = Icons.Default.AccountBalanceWallet,
                 modifier = Modifier.weight(1f),
                 onClick = onNavigateOrders,
             )
             OperationalTile(
                 label = "Committed This Week",
                 value = "$committedThisWeekCount · ₹${"%,.0f".format(committedThisWeekValue)}",
+                icon = Icons.Default.DateRange,
                 modifier = Modifier.weight(1f),
                 onClick = onNavigateOrders,
             )
@@ -163,6 +169,7 @@ fun DashboardScreen(
 private fun OperationalTile(
     label: String,
     value: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     modifier: Modifier = Modifier,
     emphasis: Boolean = false,
     isAlert: Boolean = false,
@@ -173,20 +180,25 @@ private fun OperationalTile(
         emphasis -> MaterialTheme.colorScheme.primaryContainer
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
+    val accent = if (isAlert) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
     Card(
         onClick = onClick,
         modifier = modifier,
         colors = CardDefaults.cardColors(containerColor = container),
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-            Text(
-                text = label.uppercase(),
-                fontSize = 10.sp,
-                letterSpacing = 0.8.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(4.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = label.uppercase(),
+                    fontSize = 10.sp,
+                    letterSpacing = 0.8.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = value,
                 fontSize = 18.sp,

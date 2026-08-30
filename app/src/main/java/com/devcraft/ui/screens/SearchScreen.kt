@@ -16,6 +16,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devcraft.data.local.dao.OrderWithItems
 import com.devcraft.data.local.entities.MessageEntity
+import com.devcraft.ui.components.MessageStatusChip
+import com.devcraft.ui.components.OrderStatusPill
+import com.devcraft.ui.components.SourceBadge
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -91,7 +94,7 @@ fun SearchScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(item.order.customerName ?: "Guest", fontWeight = FontWeight.Bold)
-                                        OrderStatusBadge(status = item.order.status)
+                                        OrderStatusPill(status = item.order.status)
                                     }
                                     if (!item.order.rawMessage.isNullOrBlank()) {
                                         Spacer(modifier = Modifier.height(4.dp))
@@ -124,7 +127,11 @@ fun SearchScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text(msg.senderName ?: msg.sender ?: "Message", fontWeight = FontWeight.Bold)
-                                        StatusChip(status = msg.status)
+                                        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                                            SourceBadge(source = msg.source)
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            MessageStatusChip(status = msg.status)
+                                        }
                                     }
                                     Spacer(modifier = Modifier.height(4.dp))
                                     Text("\"${msg.originalText}\"", fontSize = 12.sp)

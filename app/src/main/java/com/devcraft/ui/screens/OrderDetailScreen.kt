@@ -15,6 +15,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devcraft.data.local.dao.OrderWithItems
+import com.devcraft.ui.components.OrderStatusPill
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -90,7 +91,7 @@ fun OrderDetailScreen(
                         )
                     }
 
-                    OrderStatusBadge(status = order.status)
+                    OrderStatusPill(status = order.status)
                 }
             }
 
@@ -236,17 +237,25 @@ fun OrderDetailScreen(
                     OutlinedButton(
                         onClick = { onUpdateStatus(order.orderId, status) },
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 6.dp),
+                        contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
                         colors = if (isSelected)
                             ButtonDefaults.outlinedButtonColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
                         else
                             ButtonDefaults.outlinedButtonColors()
                     ) {
-                        Text(
-                            text = status.take(4),
-                            fontSize = 11.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                statusIcon(status),
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = status.take(4),
+                                fontSize = 10.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                            )
+                        }
                     }
                 }
             }
@@ -254,25 +263,11 @@ fun OrderDetailScreen(
     }
 }
 
+/** Status buttons carry their lifecycle icon so the row is scannable. */
 @Composable
-fun OrderStatusBadge(status: String) {
-    val (bgColor, textColor) = when (status) {
-        "COMPLETED" -> Pair(Color(0xFFE8F5E9), Color(0xFF2E7D32))
-        "PROCESSING" -> Pair(Color(0xFFE3F2FD), Color(0xFF1565C0))
-        "CANCELLED" -> Pair(Color(0xFFFFEBEE), Color(0xFFC62828))
-        else -> Pair(Color(0xFFFFF3E0), Color(0xFFE65100))
-    }
-
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = bgColor
-    ) {
-        Text(
-            text = status,
-            fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            color = textColor,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-        )
-    }
+private fun statusIcon(status: String) = when (status) {
+    "COMPLETED" -> Icons.Default.CheckCircle
+    "PROCESSING" -> Icons.Default.LocalShipping
+    "CANCELLED" -> Icons.Default.Cancel
+    else -> Icons.Default.TaskAlt
 }

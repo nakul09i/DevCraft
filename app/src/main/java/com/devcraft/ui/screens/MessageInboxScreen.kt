@@ -21,6 +21,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devcraft.data.local.entities.MessageEntity
 import com.devcraft.data.local.entities.MessageSource
+import com.devcraft.ui.components.MessageStatusChip
+import com.devcraft.ui.components.SourceBadge
 import com.devcraft.ui.theme.DevCraftMark
 import java.text.SimpleDateFormat
 import java.util.*
@@ -190,19 +192,7 @@ fun MessageCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Source Icon/Badge
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = if (isWhatsApp) Color(0xFF25D366).copy(alpha = 0.2f) else MaterialTheme.colorScheme.primaryContainer
-                    ) {
-                        Text(
-                            text = MessageSource.labelOf(message.source),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isWhatsApp) Color(0xFF075E54) else MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+                    SourceBadge(source = message.source)
 
                     Text(
                         text = message.senderName ?: message.sender ?: "Unknown Sender",
@@ -242,14 +232,29 @@ fun MessageCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    StatusChip(status = message.status)
+                    MessageStatusChip(status = message.status)
                     if (message.confidence > 0f) {
-                        Text(
-                            text = "${(message.confidence * 100).toInt()}% conf",
-                            fontSize = 11.sp,
-                            color = if (message.confidence >= 0.8f) Color(0xFF2E7D32) else Color(0xFFE65100),
-                            fontWeight = FontWeight.SemiBold
-                        )
+                        val confTint = when {
+                            message.confidence >= 0.8f && !message.needsClarification -> Color(0xFF2E7D32)
+                            message.confidence >= 0.7f -> Color(0xFFE65100)
+                            else -> Color(0xFFC62828)
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                if (message.needsClarification) Icons.Default.WarningAmber
+                                else Icons.Default.Verified,
+                                contentDescription = null,
+                                tint = confTint,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "${(message.confidence * 100).toInt()}%",
+                                fontSize = 11.sp,
+                                color = confTint,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 
@@ -274,29 +279,6 @@ fun MessageCard(
                 }
             }
         }
-    }
-}
-
-@Composable
-fun StatusChip(status: String) {
-    val (bgColor, textColor, label) = when (status) {
-        "CONVERTED" -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "Converted")
-        "PARSED" -> Triple(Color(0xFFE3F2FD), Color(0xFF1565C0), "Parsed")
-        "REVIEWED" -> Triple(Color(0xFFFFF3E0), Color(0xFFE65100), "Reviewed")
-        else -> Triple(Color(0xFFF5F5F5), Color(0xFF616161), "Received")
-    }
-
-    Surface(
-        shape = RoundedCornerShape(6.dp),
-        color = bgColor
-    ) {
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Medium,
-            color = textColor,
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-        )
     }
 }
 

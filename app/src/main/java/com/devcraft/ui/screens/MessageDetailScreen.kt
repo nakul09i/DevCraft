@@ -17,6 +17,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devcraft.data.local.entities.MessageEntity
 import com.devcraft.data.local.entities.MessageSource
+import com.devcraft.ui.components.ConfidenceMeter
+import com.devcraft.ui.components.FieldIcons
+import com.devcraft.ui.components.IconLabelRow
+import com.devcraft.ui.components.MessageStatusChip
+import com.devcraft.ui.components.SourceBadge
 import com.devcraft.domain.model.ParsedItem
 import com.devcraft.domain.model.ParsedMessage
 import java.text.SimpleDateFormat
@@ -28,7 +33,9 @@ import java.util.*
  * address in one glance, which prose does not allow.
  */
 @Composable
-private fun InterpretationTable(rows: List<Pair<String, String>>) {
+private fun InterpretationTable(
+    rows: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, String>>
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -37,33 +44,12 @@ private fun InterpretationTable(rows: List<Pair<String, String>>) {
         ),
     ) {
         Column(modifier = Modifier.padding(vertical = 4.dp)) {
-            rows.forEachIndexed { index, (label, value) ->
-                val missing = value == "—"
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    Text(
-                        text = label,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.weight(0.4f),
-                    )
-                    Text(
-                        text = value,
-                        fontSize = 13.sp,
-                        fontWeight = if (missing) FontWeight.Normal else FontWeight.SemiBold,
-                        color = if (missing) MaterialTheme.colorScheme.onSurfaceVariant
-                        else MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(0.6f),
-                    )
-                }
+            rows.forEachIndexed { index, (icon, label, value) ->
+                IconLabelRow(icon = icon, label = label, value = value)
                 if (index != rows.lastIndex) {
                     HorizontalDivider(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.25f),
+                        modifier = Modifier.padding(start = 40.dp, end = 14.dp),
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.22f),
                     )
                 }
             }
@@ -156,18 +142,7 @@ fun MessageDetailScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = if (isWhatsApp) Color(0xFF25D366).copy(alpha = 0.2f) else MaterialTheme.colorScheme.primaryContainer
-                        ) {
-                            Text(
-                                text = if (isWhatsApp) "WhatsApp Share" else message.source,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isWhatsApp) Color(0xFF075E54) else MaterialTheme.colorScheme.onPrimaryContainer,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
+                        SourceBadge(source = message.source)
 
                         Text(
                             text = message.senderName ?: message.sender ?: "Unknown Sender",
@@ -176,7 +151,7 @@ fun MessageDetailScreen(
                         )
                     }
 
-                    StatusChip(status = message.status)
+                    MessageStatusChip(status = message.status)
                 }
             }
 
@@ -252,55 +227,57 @@ fun MessageDetailScreen(
                 fontWeight = FontWeight.Bold
             )
 
-            // Confidence Indicator Bar
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = if (confidence >= 0.8f) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Icon(
-                            if (confidence >= 0.8f) Icons.Default.CheckCircle else Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = if (confidence >= 0.8f) Color(0xFF2E7D32) else Color(0xFFE65100),
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = if (confidence >= 0.8f) "High Confidence Extraction" else "Needs Review / Clarification",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (confidence >= 0.8f) Color(0xFF2E7D32) else Color(0xFFE65100)
-                        )
-                    }
-                    Text(
-                        text = "${(confidence * 100).toInt()}%",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (confidence >= 0.8f) Color(0xFF2E7D32) else Color(0xFFE65100)
-                    )
-                }
-            }
+            // Confidence: icon + bar + number, three redundant encodings
+            ConfidenceMeter(
+                confidence = confidence,
+                needsReview = needsClarification,
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             // Interpretation table: everything the parser resolved, at a glance.
+            // Icons carry the meaning so a dense table stays scannable.
             InterpretationTable(
-                rows = listOf(
-                    "Customer" to (initialParsed.customer ?: "—"),
-                    "Phone" to (initialParsed.phone ?: "—"),
-                    "Item" to (initialParsed.items.firstOrNull()?.description ?: "—"),
-                    "Quantity" to (initialParsed.items.firstOrNull()?.quantity?.toString() ?: "—"),
-                    "Amount" to (initialParsed.amount?.let { "₹%.0f".format(it) } ?: "—"),
-                    "Due date" to (initialParsed.due_date ?: "—"),
-                    "Delivery address" to (initialParsed.delivery_address ?: "—"),
-                    "PIN code" to (initialParsed.pincode ?: "—"),
-                    "Repeat order" to if (initialParsed.references_prior_order) "Yes" else "No",
-                ) + initialParsed.items.firstOrNull()?.attributes?.map { (k, v) ->
-                    k.replaceFirstChar { it.uppercase() } to v
-                }.orEmpty(),
+                rows = buildList {
+                    add(Triple(FieldIcons.Customer, "Customer", initialParsed.customer ?: "—"))
+                    add(Triple(FieldIcons.Phone, "Phone", initialParsed.phone ?: "—"))
+                    add(
+                        Triple(
+                            FieldIcons.Item, "Item",
+                            initialParsed.items.firstOrNull()?.description ?: "—"
+                        )
+                    )
+                    add(
+                        Triple(
+                            FieldIcons.Quantity, "Quantity",
+                            initialParsed.items.firstOrNull()?.quantity?.toString() ?: "—"
+                        )
+                    )
+                    add(
+                        Triple(
+                            FieldIcons.Amount, "Amount",
+                            initialParsed.amount?.let { "₹%,.0f".format(it) } ?: "—"
+                        )
+                    )
+                    add(Triple(FieldIcons.DueDate, "Due date", initialParsed.due_date ?: "—"))
+                    add(
+                        Triple(
+                            FieldIcons.Address, "Delivery address",
+                            initialParsed.delivery_address ?: "—"
+                        )
+                    )
+                    add(Triple(FieldIcons.Pincode, "PIN code", initialParsed.pincode ?: "—"))
+                    if (initialParsed.references_prior_order) {
+                        add(Triple(FieldIcons.Repeat, "Repeat order", "Yes — same as before"))
+                    }
+                    initialParsed.items.firstOrNull()?.attributes?.forEach { (k, v) ->
+                        val icon = when (k.lowercase()) {
+                            "color", "colour" -> FieldIcons.Colour
+                            "size" -> FieldIcons.Size
+                            else -> FieldIcons.Attribute
+                        }
+                        add(Triple(icon, k.replaceFirstChar { it.uppercase() }, v))
+                    }
+                },
             )
 
             Spacer(modifier = Modifier.height(4.dp))
