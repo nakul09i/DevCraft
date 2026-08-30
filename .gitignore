@@ -24,6 +24,10 @@ google-services.json
 *.pem
 service-account*.json
 
+# Built artifacts: ship via GitHub Releases, not version control
+release/*.apk
+release/*.aab
+
 # OS
 .DS_Store
 Thumbs.db
