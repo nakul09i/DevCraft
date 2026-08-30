@@ -15,6 +15,9 @@ build/
 # Local machine config (contains sdk.dir and API keys)
 local.properties
 secrets.properties
+.env
+.env.local
+.env.*.local
 
 # Secrets and credentials - never commit
 google-services.json
