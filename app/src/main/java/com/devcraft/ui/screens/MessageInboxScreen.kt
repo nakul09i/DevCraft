@@ -122,7 +122,7 @@ fun MessageInboxScreen(
                             text = "Share an order text from WhatsApp or paste any conversational message to parse it offline.",
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            style = androidx.compose.ui.text.style.TextAlign.Center
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         Button(
                             onClick = onNavigateNewOrder,

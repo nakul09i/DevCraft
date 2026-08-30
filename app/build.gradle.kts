@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.devcraft"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.devcraft"

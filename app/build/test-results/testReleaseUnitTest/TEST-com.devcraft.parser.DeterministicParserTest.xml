@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="com.devcraft.parser.DeterministicParserTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-08-29T20:48:35" hostname="LAPTOP-LBH96DF1" time="0.141">
-  <properties/>
-  <testcase name="testPriorOrderReference" classname="com.devcraft.parser.DeterministicParserTest" time="0.133"/>
-  <testcase name="testHinglishKurtaOrder" classname="com.devcraft.parser.DeterministicParserTest" time="0.005"/>
-  <testcase name="testDevanagariHindiNumber" classname="com.devcraft.parser.DeterministicParserTest" time="0.003"/>
-  <system-out><![CDATA[]]></system-out>
-  <system-err><![CDATA[]]></system-err>
-</testsuite>
