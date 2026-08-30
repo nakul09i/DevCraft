@@ -3,6 +3,7 @@ package com.devcraft.ui
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.devcraft.DevCraftApplication
 import com.devcraft.alerts.LocalAlertScheduler
 import com.devcraft.data.local.dao.OrderWithItems
@@ -27,15 +28,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val messageDao = db.messageDao()
     private val alertScheduler = LocalAlertScheduler(application)
 
-    val deviceId = "DEVICE_" + UUID.randomUUID().toString().take(8)
+    val deviceId = (application as DevCraftApplication).deviceId
     private val operationLogManager = OperationLogManager(operationDao, deviceId)
 
     private val _isOnline = MutableStateFlow(false)
     val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
 
-    // Navigation event for shared message ingestion
-    private val _navigateToMessageDetail = MutableSharedFlow<String>()
-    val navigateToMessageDetail: SharedFlow<String> = _navigateToMessageDetail.asSharedFlow()
+    /**
+     * Consumable navigation target for an ingested share. A StateFlow, not a
+     * SharedFlow: ACTION_SEND is handled in onCreate *before* setContent runs,
+     * so a replay-0 SharedFlow emitted into a UI that did not exist yet, and a
+     * cold-start share silently failed to open the message.
+     */
+    private val _pendingMessageId = MutableStateFlow<String?>(null)
+    val pendingMessageId: StateFlow<String?> = _pendingMessageId.asStateFlow()
+
+    fun consumePendingMessage() {
+        _pendingMessageId.value = null
+    }
 
     // Message Flows
     val allMessages: StateFlow<List<MessageEntity>> = messageDao.getAllMessages()
@@ -111,10 +121,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return messageDao.getMessageByIdFlow(id)
     }
 
-    fun getOrderWithItemsFlow(orderId: String): Flow<OrderWithItems?> = flow {
-        val result = orderDao.getOrderWithItemsById(orderId)
-        emit(result)
-    }
+    fun getOrderWithItemsFlow(orderId: String): Flow<OrderWithItems?> =
+        orderDao.getOrderWithItemsByIdFlow(orderId)
 
     suspend fun getMessageById(id: String): MessageEntity? {
         return withContext(Dispatchers.IO) {
@@ -161,16 +169,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 updatedAt = System.currentTimeMillis()
             )
 
-            messageDao.insertMessage(entity)
+            db.withTransaction {
+                messageDao.insertMessage(entity)
+                operationLogManager.logOperation(
+                    entityType = "MESSAGE",
+                    entityId = messageId,
+                    operationType = "CREATE",
+                    changedFieldsJson = "{\"source\": \"$source\", \"status\": \"PARSED\"}"
+                )
+            }
 
-            operationLogManager.logOperation(
-                entityType = "MESSAGE",
-                entityId = messageId,
-                operationType = "CREATE",
-                changedFieldsJson = "{\"source\": \"$source\", \"status\": \"PARSED\"}"
-            )
-
-            _navigateToMessageDetail.emit(messageId)
+            _pendingMessageId.value = messageId
         }
     }
 
@@ -190,78 +199,86 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch(Dispatchers.IO) {
             val orderId = UUID.randomUUID().toString()
             val resolvedCustomerName = if (customerName.isNotBlank()) customerName else "Guest Customer"
+            val now = System.currentTimeMillis()
 
-            // 1. Create/find customer
-            val existingCustomers = customerDao.searchCustomers(resolvedCustomerName).firstOrNull()
-            val customerId = existingCustomers?.firstOrNull { it.name.equals(resolvedCustomerName, ignoreCase = true) }?.customerId
-                ?: UUID.randomUUID().toString().also { newCustId ->
-                    customerDao.insertCustomer(
-                        CustomerEntity(
-                            customerId = newCustId,
-                            name = resolvedCustomerName,
-                            createdAt = System.currentTimeMillis()
+            // One transaction for the whole conversion. Previously these were
+            // eight sequential DAO calls, so process death midway could leave an
+            // orphaned customer, an order with no items, or a message marked
+            // CONVERTED pointing at an order that was never written.
+            db.withTransaction {
+                // 1. Find or create customer
+                val customerId = customerDao.findCustomerByName(resolvedCustomerName)?.customerId
+                    ?: UUID.randomUUID().toString().also { newCustId ->
+                        customerDao.insertCustomer(
+                            CustomerEntity(
+                                customerId = newCustId,
+                                name = resolvedCustomerName,
+                                createdAt = now
+                            )
                         )
-                    )
-                    operationLogManager.logOperation(
-                        entityType = "CUSTOMER",
-                        entityId = newCustId,
-                        operationType = "CREATE",
-                        changedFieldsJson = "{\"name\": \"$resolvedCustomerName\"}"
-                    )
-                }
+                        operationLogManager.logOperation(
+                            entityType = "CUSTOMER",
+                            entityId = newCustId,
+                            operationType = "CREATE",
+                            changedFieldsJson = "{\"name\": \"$resolvedCustomerName\"}"
+                        )
+                    }
 
-            // 2. Insert OrderEntity
-            val orderEntity = OrderEntity(
-                orderId = orderId,
-                customerId = customerId,
-                customerName = resolvedCustomerName,
-                status = "CONFIRMED",
-                totalAmount = amount ?: 0.0,
-                dueDate = dueDate,
-                rawMessage = rawMessage,
-                referencesPriorOrder = false,
-                confidence = 1.0f,
-                needsClarification = false,
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
-            )
-            orderDao.insertOrder(orderEntity)
+                // 2. Insert OrderEntity
+                orderDao.insertOrder(
+                    OrderEntity(
+                        orderId = orderId,
+                        customerId = customerId,
+                        customerName = resolvedCustomerName,
+                        status = "CONFIRMED",
+                        totalAmount = amount ?: 0.0,
+                        dueDate = dueDate,
+                        rawMessage = rawMessage,
+                        referencesPriorOrder = false,
+                        confidence = 1.0f,
+                        needsClarification = false,
+                        createdAt = now,
+                        updatedAt = now
+                    )
+                )
 
-            // 3. Insert OrderItems
-            val orderItems = items.map { item ->
-                OrderItemEntity(
-                    itemId = UUID.randomUUID().toString(),
+                // 3. Insert OrderItems
+                orderDao.insertOrderItems(
+                    items.map { item ->
+                        OrderItemEntity(
+                            itemId = UUID.randomUUID().toString(),
+                            orderId = orderId,
+                            description = item.description,
+                            quantity = item.quantity,
+                            attributesJson = item.attributes.toString()
+                        )
+                    }
+                )
+
+                // 4. Link MessageEntity
+                messageDao.linkParsedOrder(
+                    messageId = messageId,
                     orderId = orderId,
-                    description = item.description,
-                    quantity = item.quantity,
-                    attributesJson = item.attributes.toString()
+                    status = MessageStatus.CONVERTED.name,
+                    updatedAt = now
+                )
+
+                // 5. Operation logs
+                operationLogManager.logOperation(
+                    entityType = "ORDER",
+                    entityId = orderId,
+                    operationType = "CREATE",
+                    changedFieldsJson = "{\"customerName\": \"$resolvedCustomerName\", \"status\": \"CONFIRMED\", \"totalAmount\": ${amount ?: 0.0}}"
+                )
+                operationLogManager.logOperation(
+                    entityType = "MESSAGE",
+                    entityId = messageId,
+                    operationType = "UPDATE",
+                    changedFieldsJson = "{\"status\": \"CONVERTED\", \"parsedOrderId\": \"$orderId\"}"
                 )
             }
-            orderDao.insertOrderItems(orderItems)
 
-            // 4. Link MessageEntity
-            messageDao.linkParsedOrder(
-                messageId = messageId,
-                orderId = orderId,
-                status = MessageStatus.CONVERTED.name,
-                updatedAt = System.currentTimeMillis()
-            )
-
-            // 5. Operation Logs
-            operationLogManager.logOperation(
-                entityType = "ORDER",
-                entityId = orderId,
-                operationType = "CREATE",
-                changedFieldsJson = "{\"customerName\": \"$resolvedCustomerName\", \"status\": \"CONFIRMED\", \"totalAmount\": ${amount ?: 0.0}}"
-            )
-            operationLogManager.logOperation(
-                entityType = "MESSAGE",
-                entityId = messageId,
-                operationType = "UPDATE",
-                changedFieldsJson = "{\"status\": \"CONVERTED\", \"parsedOrderId\": \"$orderId\"}"
-            )
-
-            // 6. Schedule Local Alert if due date present
+            // 6. Side effect, deliberately outside the transaction
             if (!dueDate.isNullOrBlank()) {
                 scheduleAlertForDueDate(orderId, resolvedCustomerName, dueDate)
             }
@@ -319,54 +336,61 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
 
-            orderDao.insertOrder(orderEntity)
-            orderDao.insertOrderItems(items)
-
-            operationLogManager.logOperation(
-                entityType = "ORDER",
-                entityId = orderId,
-                operationType = "CREATE",
-                changedFieldsJson = "{\"customerName\": \"$customerName\", \"status\": \"CONFIRMED\"}"
-            )
+            db.withTransaction {
+                orderDao.insertOrder(orderEntity)
+                orderDao.insertOrderItems(items)
+                operationLogManager.logOperation(
+                    entityType = "ORDER",
+                    entityId = orderId,
+                    operationType = "CREATE",
+                    changedFieldsJson = "{\"customerName\": \"$customerName\", \"status\": \"CONFIRMED\"}"
+                )
+            }
         }
     }
 
     fun updateOrderStatus(orderId: String, newStatus: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val existing = orderDao.getOrderWithItemsById(orderId) ?: return@launch
-            val updated = existing.order.copy(status = newStatus, updatedAt = System.currentTimeMillis())
-            orderDao.updateOrder(updated)
-
-            operationLogManager.logOperation(
-                entityType = "ORDER",
-                entityId = orderId,
-                operationType = "UPDATE",
-                changedFieldsJson = "{\"status\": \"$newStatus\"}"
-            )
+            db.withTransaction {
+                val existing = orderDao.getOrderWithItemsById(orderId) ?: return@withTransaction
+                orderDao.updateOrder(
+                    existing.order.copy(status = newStatus, updatedAt = System.currentTimeMillis())
+                )
+                operationLogManager.logOperation(
+                    entityType = "ORDER",
+                    entityId = orderId,
+                    operationType = "UPDATE",
+                    changedFieldsJson = "{\"status\": \"$newStatus\"}"
+                )
+            }
         }
     }
 
     fun deleteOrder(orderId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            orderDao.deleteOrderComplete(orderId)
-            operationLogManager.logOperation(
-                entityType = "ORDER",
-                entityId = orderId,
-                operationType = "DELETE",
-                changedFieldsJson = "{}"
-            )
+            db.withTransaction {
+                orderDao.deleteOrderComplete(orderId)
+                operationLogManager.logOperation(
+                    entityType = "ORDER",
+                    entityId = orderId,
+                    operationType = "DELETE",
+                    changedFieldsJson = "{}"
+                )
+            }
         }
     }
 
     fun deleteMessage(messageId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            messageDao.deleteMessageById(messageId)
-            operationLogManager.logOperation(
-                entityType = "MESSAGE",
-                entityId = messageId,
-                operationType = "DELETE",
-                changedFieldsJson = "{}"
-            )
+            db.withTransaction {
+                messageDao.deleteMessageById(messageId)
+                operationLogManager.logOperation(
+                    entityType = "MESSAGE",
+                    entityId = messageId,
+                    operationType = "DELETE",
+                    changedFieldsJson = "{}"
+                )
+            }
         }
     }
 }

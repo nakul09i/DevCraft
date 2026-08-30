@@ -24,6 +24,11 @@ interface OrderDao {
     @Query("SELECT * FROM orders WHERE orderId = :id LIMIT 1")
     suspend fun getOrderWithItemsById(id: String): OrderWithItems?
 
+    /** Reactive variant: OrderDetailScreen must reflect status edits immediately. */
+    @Transaction
+    @Query("SELECT * FROM orders WHERE orderId = :id LIMIT 1")
+    fun getOrderWithItemsByIdFlow(id: String): Flow<OrderWithItems?>
+
     @Transaction
     @Query("SELECT * FROM orders WHERE rawMessage LIKE '%' || :query || '%' OR customerName LIKE '%' || :query || '%' ORDER BY createdAt DESC")
     fun searchOrders(query: String): Flow<List<OrderWithItems>>

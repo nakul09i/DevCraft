@@ -44,10 +44,13 @@ class MainActivity : ComponentActivity() {
                 val filteredMessages by viewModel.filteredMessages.collectAsState()
                 val selectedFilter by viewModel.messageFilter.collectAsState()
 
-                // Handle incoming shared message navigation
-                LaunchedEffect(Unit) {
-                    viewModel.navigateToMessageDetail.collect { messageId ->
-                        navController.navigate("message_detail/$messageId")
+                // Open a freshly shared message. Reads a consumable StateFlow so a
+                // cold-start share (ingested before this UI existed) still lands.
+                val pendingMessageId by viewModel.pendingMessageId.collectAsState()
+                LaunchedEffect(pendingMessageId) {
+                    pendingMessageId?.let { id ->
+                        navController.navigate("message_detail/$id")
+                        viewModel.consumePendingMessage()
                     }
                 }
 
