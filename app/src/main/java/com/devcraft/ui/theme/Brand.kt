@@ -78,7 +78,9 @@ fun DevCraftMark(
             painter = painterResource(R.drawable.ic_brand_d),
             contentDescription = null,
             tint = markColor,
-            modifier = Modifier.size(size * 0.56f),
+            // 0.58 matches the optical balance checked against the rendered mark;
+            // the bubble tail makes the glyph taller than a plain D.
+            modifier = Modifier.size(size * 0.58f),
         )
     }
 }

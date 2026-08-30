@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    DevCraft "D" mark. Monoline geometric construction on a 24x24 grid:
-    flat left stem, true semicircular bowl (r=10), uniform 5.2 stroke on all
-    four sides, generous counter so the letter stays readable down to ~16dp.
-    White on transparent so it can sit on the brand navy or be tinted by
-    Icon(tint=) / the notification system.
+    DevCraft mark. Geometric monoline "D" with a message-bubble tail on the
+    bottom-left of the stem - the product turns a conversation into an order, so
+    the mark carries that one idea and nothing else.
+
+    24x24 grid. Stem and bowl share a uniform 4.6 stroke; the bowl is a true
+    semicircle (r=8.75). The tail is part of the same outline, not a second
+    shape, so evenOdd cuts only the counter. Counter is 8.3 tall (~39% of glyph
+    height) so the letter still reads at 24dp.
+
+    White on transparent: sits on the brand navy, or gets tinted by Icon(tint=)
+    and by the notification system.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
@@ -14,5 +20,5 @@
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M4,2h6a10,10 0 0 1 0,20h-6z M9.2,7.2h0.8a4.8,4.8 0 0 1 0,9.6h-0.8z" />
+        android:pathData="M4,1.5H10.75A8.75,8.75 0 0 1 10.75,19H7.8L4,22.8Z M8.6,6.1h2.15a4.15,4.15 0 0 1 0,8.3h-2.15z" />
 </vector>

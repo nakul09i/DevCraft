@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Adaptive-icon foreground: the same D mark scaled onto the 108x108 canvas.
-    Glyph is 38.4x48 centred at (54,54), so its furthest corner sits 30.7 from
-    centre - inside the 33 radius that survives a circular mask, and well
-    inside the 72x72 safe square. Also used as the API 33+ monochrome layer.
+    Adaptive-icon foreground: the same D-with-bubble-tail mark on the 108x108
+    canvas. Glyph is 34.9 x 48 centred at (54,54), so its furthest corner sits
+    29.7 from centre - inside the 33 radius that survives a circular mask, and
+    well inside the 72x72 safe square. Also used as the API 33+ monochrome layer.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -13,5 +13,5 @@
     <path
         android:fillColor="#FFFFFFFF"
         android:fillType="evenOdd"
-        android:pathData="M34.8,30h14.4a24,24 0 0 1 0,48h-14.4z M47.28,42.48h1.92a11.52,11.52 0 0 1 0,23.04h-1.92z" />
+        android:pathData="M36.55,30H51.76A19.72,19.72 0 0 1 51.76,69.44H45.11L36.55,78Z M46.92,40.37h4.85a9.35,9.35 0 0 1 0,18.7h-4.85z" />
 </vector>
