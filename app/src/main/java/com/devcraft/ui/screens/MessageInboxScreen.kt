@@ -1,8 +1,11 @@
 package com.devcraft.ui.screens
 
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -22,7 +25,7 @@ import com.devcraft.ui.theme.DevCraftMark
 import java.text.SimpleDateFormat
 import java.util.*
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun MessageInboxScreen(
     messages: List<MessageEntity>,
@@ -70,28 +73,29 @@ fun MessageInboxScreen(
                 .padding(innerPadding)
                 .padding(horizontal = 16.dp)
         ) {
-            // Filter Chips
-            Row(
+            // Status and source filters. Scrollable so adding a source later
+            // does not squeeze the row.
+            LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
+                contentPadding = PaddingValues(vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                FilterChip(
-                    selected = selectedFilter == "ALL",
-                    onClick = { onFilterSelected("ALL") },
-                    label = { Text("All") }
+                val filters = listOf(
+                    "ALL" to "All",
+                    "NEEDS_REVIEW" to "Needs Review",
+                    "CONVERTED" to "Converted",
+                    "WHATSAPP" to "WhatsApp",
+                    "SMS" to "SMS",
+                    "NOTIFICATION" to "Notification",
+                    "MANUAL" to "Manual",
                 )
-                FilterChip(
-                    selected = selectedFilter == "NEEDS_REVIEW",
-                    onClick = { onFilterSelected("NEEDS_REVIEW") },
-                    label = { Text("Needs Review") }
-                )
-                FilterChip(
-                    selected = selectedFilter == "CONVERTED",
-                    onClick = { onFilterSelected("CONVERTED") },
-                    label = { Text("Converted") }
-                )
+                items(filters, key = { it.first }) { (key, label) ->
+                    FilterChip(
+                        selected = selectedFilter == key,
+                        onClick = { onFilterSelected(key) },
+                        label = { Text(label) }
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(4.dp))
@@ -136,10 +140,15 @@ fun MessageInboxScreen(
                     contentPadding = PaddingValues(bottom = 80.dp)
                 ) {
                     items(messages, key = { it.messageId }) { message ->
+                        // Newly captured messages slide in rather than snapping,
+                        // which matters when one arrives while you are looking.
                         MessageCard(
                             message = message,
                             onClick = { onNavigateDetail(message.messageId) },
-                            onDelete = { onDeleteMessage(message.messageId) }
+                            onDelete = { onDeleteMessage(message.messageId) },
+                            modifier = Modifier.animateItemPlacement(
+                                animationSpec = tween(durationMillis = 250)
+                            )
                         )
                     }
                 }
@@ -152,13 +161,14 @@ fun MessageInboxScreen(
 fun MessageCard(
     message: MessageEntity,
     onClick: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val isConverted = message.status == "CONVERTED"
     val isWhatsApp = message.source == MessageSource.WHATSAPP_SHARE.name
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(12.dp),
@@ -186,7 +196,7 @@ fun MessageCard(
                         color = if (isWhatsApp) Color(0xFF25D366).copy(alpha = 0.2f) else MaterialTheme.colorScheme.primaryContainer
                     ) {
                         Text(
-                            text = if (isWhatsApp) "WhatsApp" else message.source,
+                            text = MessageSource.labelOf(message.source),
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isWhatsApp) Color(0xFF075E54) else MaterialTheme.colorScheme.onPrimaryContainer,

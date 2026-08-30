@@ -51,6 +51,22 @@
             android:permission ensures only the OS can deliver it, so another
             app cannot forge a fake incoming SMS into the order inbox.
         -->
+        <!--
+            Reads messaging notifications so orders can be captured without a
+            manual share. Requires the user to grant "Notification access" in
+            system settings; Android never grants this silently. Only an
+            allow-list of messaging apps is read - see docs/SMS_INGESTION.md.
+        -->
+        <service
+            android:name=".notifications.DevCraftNotificationListener"
+            android:exported="false"
+            android:label="DevCraft order capture"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
         <receiver
             android:name=".sms.SmsReceiver"
             android:enabled="true"

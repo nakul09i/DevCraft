@@ -37,6 +37,11 @@ fun SettingsScreen(
     smsCaptureEnabled: Boolean,
     smsPermissionGranted: Boolean,
     onSmsCaptureChange: (Boolean) -> Unit,
+    // Notification capture
+    notificationCaptureEnabled: Boolean,
+    notificationAccessGranted: Boolean,
+    onNotificationCaptureChange: (Boolean) -> Unit,
+    onOpenNotificationAccess: () -> Unit,
     // Data
     orderCount: Int,
     messageCount: Int,
@@ -161,6 +166,76 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
+            }
+
+            // ---------- Notification capture ----------
+            SettingsSection("Message capture") {
+                Text(
+                    "WhatsApp: use Share → DevCraft from any chat.",
+                    fontSize = 13.sp,
+                )
+                Text(
+                    "DevCraft cannot read a WhatsApp inbox directly. Nothing does, " +
+                        "without rooting the phone.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                Spacer(Modifier.height(14.dp))
+                HorizontalDivider()
+                Spacer(Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Capture from notifications", fontSize = 14.sp)
+                        Text(
+                            text = if (notificationAccessGranted) "Access granted"
+                            else "Notification access required",
+                            fontSize = 12.sp,
+                            color = if (notificationAccessGranted)
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.error,
+                        )
+                    }
+                    Switch(
+                        checked = notificationCaptureEnabled,
+                        onCheckedChange = onNotificationCaptureChange,
+                    )
+                }
+
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Reads only messaging apps (WhatsApp, Telegram, Signal, Messages). " +
+                        "Bank, email and personal notifications are ignored and never stored. " +
+                        "Verification codes are always discarded.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+
+                if (notificationCaptureEnabled && !notificationAccessGranted) {
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = onOpenNotificationAccess, modifier = Modifier.fillMaxWidth()) {
+                        Text("Grant notification access")
+                    }
+                    Text(
+                        "Android has no in-app prompt for this - it opens system settings, " +
+                            "where you switch DevCraft on.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    "Note: notification text is whatever the sending app displays, so it " +
+                        "can be truncated. Share → DevCraft always gives the full message.",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             // ---------- Data ----------

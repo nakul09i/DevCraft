@@ -7,8 +7,25 @@ import java.util.UUID
 enum class MessageSource {
     MANUAL,
     WHATSAPP_SHARE,
+    /** Shared from some other app; we only claim WhatsApp when we can prove it. */
+    OTHER_SHARE,
     SMS,
-    NOTIFICATION
+    /** Captured from a messaging app's notification, with user-granted access. */
+    NOTIFICATION;
+
+    val label: String
+        get() = when (this) {
+            MANUAL -> "Manual"
+            WHATSAPP_SHARE -> "WhatsApp"
+            OTHER_SHARE -> "Shared"
+            SMS -> "SMS"
+            NOTIFICATION -> "Notification"
+        }
+
+    companion object {
+        fun labelOf(raw: String?): String =
+            entries.firstOrNull { it.name == raw }?.label ?: (raw ?: "Unknown")
+    }
 }
 
 enum class MessageStatus {

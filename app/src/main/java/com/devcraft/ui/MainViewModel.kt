@@ -67,9 +67,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SyncStatus.OFFLINE)
 
     val smsCaptureEnabled: StateFlow<Boolean> = settings.smsCaptureEnabled
+    val notificationCaptureEnabled: StateFlow<Boolean> = settings.notificationCaptureEnabled
     val lastSyncAt: StateFlow<Long?> = settings.lastSyncAt
 
     fun setSmsCaptureEnabled(enabled: Boolean) = settings.setSmsCaptureEnabled(enabled)
+    fun setNotificationCaptureEnabled(enabled: Boolean) =
+        settings.setNotificationCaptureEnabled(enabled)
 
     /**
      * Consumable navigation target for an ingested share. A StateFlow, not a
@@ -119,8 +122,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _messageFilter
     ) { messages, filter ->
         when (filter) {
-            "NEEDS_REVIEW" -> messages.filter { it.status in listOf("RECEIVED", "PARSED", "REVIEWED") || it.needsClarification }
+            "NEEDS_REVIEW" -> messages.filter {
+                it.status in listOf("RECEIVED", "PARSED", "REVIEWED") || it.needsClarification
+            }
             "CONVERTED" -> messages.filter { it.status == "CONVERTED" }
+            // Source filters
+            "WHATSAPP" -> messages.filter {
+                it.source == MessageSource.WHATSAPP_SHARE.name ||
+                    it.source == MessageSource.OTHER_SHARE.name
+            }
+            "SMS" -> messages.filter { it.source == MessageSource.SMS.name }
+            "NOTIFICATION" -> messages.filter { it.source == MessageSource.NOTIFICATION.name }
+            "MANUAL" -> messages.filter { it.source == MessageSource.MANUAL.name }
             else -> messages
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())

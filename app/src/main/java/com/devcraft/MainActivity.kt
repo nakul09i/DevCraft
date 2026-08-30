@@ -24,6 +24,7 @@ import androidx.navigation.navArgument
 import com.devcraft.alerts.CapturedMessageNotifier
 import com.devcraft.alerts.LocalAlertScheduler
 import com.devcraft.data.local.entities.MessageSource
+import com.devcraft.notifications.DevCraftNotificationListener
 import com.devcraft.ui.AuthViewModel
 import com.devcraft.ui.MainViewModel
 import com.devcraft.ui.components.DevCraftBottomNavBar
@@ -210,6 +211,7 @@ class MainActivity : ComponentActivity() {
                             val lastSync by viewModel.lastSyncAt.collectAsState()
                             val syncErr by viewModel.syncError.collectAsState()
                             val smsEnabled by viewModel.smsCaptureEnabled.collectAsState()
+                            val notifEnabled by viewModel.notificationCaptureEnabled.collectAsState()
                             val messages by viewModel.allMessages.collectAsState()
 
                             SettingsScreen(
@@ -229,6 +231,15 @@ class MainActivity : ComponentActivity() {
                                     // Turning it on is meaningless without the permission.
                                     if (enabled && !smsPermissionGranted.value) {
                                         requestSmsPermission.launch(Manifest.permission.RECEIVE_SMS)
+                                    }
+                                },
+                                notificationCaptureEnabled = notifEnabled,
+                                notificationAccessGranted =
+                                    DevCraftNotificationListener.isAccessGranted(this@MainActivity),
+                                onNotificationCaptureChange = viewModel::setNotificationCaptureEnabled,
+                                onOpenNotificationAccess = {
+                                    runCatching {
+                                        startActivity(DevCraftNotificationListener.accessSettingsIntent())
                                     }
                                 },
                                 orderCount = orders.size,
@@ -323,6 +334,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Labels a share by the app that actually sent it. Previously every share
+     * was recorded as WHATSAPP_SHARE, which was simply untrue for a Telegram or
+     * Notes share. Android exposes the calling package via the referrer; when it
+     * is unavailable we say OTHER_SHARE rather than guess.
+     */
+    private fun sourceOfShare(): String {
+        val callerPackage = referrer?.host ?: callingPackage
+        return when {
+            callerPackage == null -> MessageSource.OTHER_SHARE.name
+            callerPackage.contains("whatsapp", ignoreCase = true) ->
+                MessageSource.WHATSAPP_SHARE.name
+            else -> MessageSource.OTHER_SHARE.name
+        }
+    }
+
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
 
@@ -333,7 +360,7 @@ class MainActivity : ComponentActivity() {
             if (!sharedText.isNullOrBlank()) {
                 viewModel.ingestSharedMessage(
                     text = sharedText,
-                    source = MessageSource.WHATSAPP_SHARE.name,
+                    source = sourceOfShare(),
                     senderName = subject
                 )
             }
