@@ -7,31 +7,30 @@ import java.util.*
 import java.util.regex.Pattern
 
 /**
- * Offline, rule-based multilingual order parser. No network, no model, fully
- * deterministic. The same message always parses the same way.
+ * Offline, rule-based multilingual order parser. No network, no cloud AI model,
+ * 100% deterministic and private.
  *
- * Extraction runs in strict order of trust:
- *  1. explicit labels - "Location: Bhopal", "Amount: Rs 500"
- *  2. unambiguous patterns - dates, currency, phone, PIN, payment terms
- *  3. positional and vocabulary heuristics, only for fields still unresolved
- *
- * Field order in the message is irrelevant. Nothing is invented: an unresolved
- * field stays null and is listed in [ParsedMessage.missing_fields].
+ * Execution flow:
+ *  1. Classification & Non-order protection (PDFs, OTPs, Bank alerts NEVER become orders)
+ *  2. Explicit labels ("Location: Bhopal", "Amount: Rs 500")
+ *  3. Unambiguous pattern extraction (dates, currency, phone, PIN, payment method)
+ *  4. Heuristic name and item resolution (guarded against metadata and units)
+ *  5. Objective per-order scoring (Classification, Field, Date, Clarification, Overall)
  */
 object DeterministicParser {
 
     // ------------------------------------------------------------- vocabulary
 
     private val NUMBER_WORDS: Map<String, Int> = mapOf(
-        "ek" to 1, "एक" to 1,
-        "do" to 2, "दो" to 2,
-        "teen" to 3, "tin" to 3, "तीन" to 3,
-        "chaar" to 4, "char" to 4, "चार" to 4,
-        "paanch" to 5, "panch" to 5, "पांच" to 5, "पाँच" to 5,
-        "chhah" to 6, "chah" to 6, "che" to 6, "छह" to 6,
-        "saat" to 7, "सात" to 7,
-        "aath" to 8, "आठ" to 8,
-        "nau" to 9, "नौ" to 9,
+        "ek" to 1, "एक" to 1, "१" to 1,
+        "do" to 2, "दो" to 2, "२" to 2,
+        "teen" to 3, "tin" to 3, "तीन" to 3, "३" to 3,
+        "chaar" to 4, "char" to 4, "चार" to 4, "४" to 4,
+        "paanch" to 5, "panch" to 5, "पांच" to 5, "पाँच" to 5, "५" to 5,
+        "chhah" to 6, "chah" to 6, "che" to 6, "छह" to 6, "६" to 6,
+        "saat" to 7, "सात" to 7, "७" to 7,
+        "aath" to 8, "आठ" to 8, "८" to 8,
+        "nau" to 9, "नौ" to 9, "९" to 9,
         "das" to 10, "दस" to 10,
         "barah" to 12, "बारह" to 12,
         "bees" to 20, "बीस" to 20,
@@ -79,7 +78,6 @@ object DeterministicParser {
         "bhej", "bhejo", "kar", "karo", "de", "le", "daal", "dal", "likh",
         "भेज", "कर", "दे", "ले",
     )
-    private val AMBIGUOUS_NUMERALS = setOf("do", "दो", "le", "lo")
 
     /** Words that end an item phrase. */
     private val ITEM_STOP = setOf(
@@ -87,18 +85,23 @@ object DeterministicParser {
         "amount", "amt", "total", "price", "rate", "payment", "pay", "mode",
         "phone", "mobile", "contact", "qty", "quantity", "name", "customer",
         "chahiye", "chaiye", "chahiya", "चाहिए", "bhejo", "bhej", "bhejna",
-        "dena", "karo", "send", "please", "pls", "need", "want", "for",
+        "dena", "karo", "send", "please", "pls", "need", "want", "for", "to",
         "भेजो", "भेज", "देना", "करो", "और", "and", "tak", "tk", "ko", "को",
         "cod", "cash", "upi", "advance", "prepaid", "paid", "udhaar", "udhar",
+        "on", "in", "at", "by", "deliver to", "near", "opposite", "shop", "flat"
     )
 
-    /** Never a customer name. */
+    /** Words that must NEVER be extracted as a customer name. */
     private val NOT_A_NAME = setOf(
         "kuch", "koi", "thoda", "zara", "jaldi", "urgent", "asap", "please", "pls",
         "samaan", "saman", "maal", "order", "item", "items", "goods", "product",
         "delivery", "location", "address", "amount", "total", "payment", "date",
         "cod", "cash", "upi", "advance", "credit", "udhaar", "parcel", "parcels",
         "packet", "bori", "piece", "pieces", "pcs", "box", "bag", "kg", "dozen",
+        "pages", "page", "report", "test", "tech", "stack", "folders", "architecture",
+        "document", "file", "attachment", "pdf", "apk", "doc", "zip", "parcal", "parcals",
+        "min", "mins", "sec", "hrs", "version", "build", "need", "for", "to", "kurta", "cement",
+        "chairs", "shirts", "notebook", "notebooks", "food",
         "कुछ", "सामान", "माल", "ऑर्डर", "पैकेट", "बोरी",
     )
 
@@ -124,9 +127,6 @@ object DeterministicParser {
         "\\brs\\.?|\\brupees?|\\brupaye|\\brupaiya|\\binr|\\u20B9|\\u0930\\u0941"
     private const val NUM = "[0-9\\u0966-\\u096F]+(?:\\.[0-9]+)?"
 
-    // [ \t]* not \s*: the currency word must be on the SAME line as the number.
-    // With \s* a trailing "2026\nrs 500" matched "2026 rs" and read the year as
-    // the amount.
     private val AMOUNT_PATTERN: Pattern = Pattern.compile(
         "(?:$CURRENCY_ALT)[ \\t]*($NUM)|($NUM)[ \\t]*(?:$CURRENCY_ALT)",
         Pattern.CASE_INSENSITIVE,
@@ -135,8 +135,6 @@ object DeterministicParser {
     private val PINCODE_PATTERN: Pattern = Pattern.compile("\\b([1-9][0-9]{5})\\b")
     private val PHONE_PATTERN: Pattern = Pattern.compile("(?:\\+?91[\\s-]?)?\\b([6-9][0-9]{9})\\b")
 
-    // \p{M} is essential: Devanagari matras and anusvara are combining marks, so
-    // without it "परसों" shreds to "परस" and "बोरी" to "बोर".
     private val TOKEN_SPLIT = Regex("[^\\p{L}\\p{M}\\p{N}.]+")
     private val CLAUSE_SPLIT = Regex("[,;|\\n\\r]+|\\s+-\\s+")
 
@@ -144,7 +142,7 @@ object DeterministicParser {
 
     fun parse(text: String): ParsedMessage = parse(text, System.currentTimeMillis())
 
-    /** [nowMillis] is the date anchor, injected so this is unit-testable. */
+    /** [nowMillis] is the reference timestamp for relative date resolution. */
     fun parse(text: String, nowMillis: Long): ParsedMessage {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) {
@@ -156,50 +154,121 @@ object DeterministicParser {
             )
         }
 
-        val category = MessageClassifier.classify(trimmed)
+        // STEP 1: Message Classification & Confidence Gate
+        val classResult = MessageClassifier.classifyWithDetails(trimmed)
+        val category = classResult.category
+        val classificationScore = classResult.confidence
+
+        // If message is NOT an order (e.g. Document, Bank, OTP, Delivery, System, Promo),
+        // completely isolate it so document metadata and file names never become order fields.
+        if (!category.isOrder) {
+            return ParsedMessage(
+                customer = null,
+                items = emptyList(),
+                due_date = null,
+                raw_date_text = null,
+                date_confidence = 0.0f,
+                date_resolution_status = "NOT_FOUND",
+                amount = null,
+                references_prior_order = false,
+                confidence = minOf(classificationScore * 0.35f, 0.40f),
+                needs_clarification = true,
+                delivery_address = null,
+                pincode = null,
+                phone = null,
+                payment_method = null,
+                classification = category,
+                classification_score = classificationScore,
+                field_extraction_score = 0.0f,
+                date_resolution_score = 1.0f,
+                clarification_decision_score = 1.0f,
+                overall_score = 0.40f,
+                missing_fields = ALL_FIELDS,
+                review_notes = listOf("Classified as ${category.label}, not an order. Order creation disabled.")
+            )
+        }
+
         val lower = trimmed.lowercase(Locale.ROOT)
         val tokens = tokenize(lower)
         val labels = FieldExtractors.labelledFields(trimmed)
         val notes = mutableListOf<String>()
 
-        // ---- phone first: a 10-digit mobile must never be read as money ---
+        // STEP 2: Phone number extraction
         val phone = labels["phone"]?.let { extractPhone(it) } ?: extractPhone(trimmed)
 
-        // ---- amount: label first, then currency pattern -------------------
-        val labelledAmountDigits = labels["amount"]?.let { extractAmountDigits(it.lowercase(Locale.ROOT)) }
-        val amountDigits = (labelledAmountDigits ?: extractAmountDigits(lower))
-            ?.takeIf { toAsciiDigits(it) != phone }
-
-        // ---- payment ------------------------------------------------------
+        // STEP 4: Payment method
         val payment = FieldExtractors.paymentMethod(lower)
 
-        // ---- date: label first, then absolute, then relative --------------
+        // STEP 3: Amount extraction (Label first, then currency pattern, then payment-adjacent number)
+        val paymentAmountPattern = Pattern.compile(
+            "\\b($NUM)\\s*(?:cod|cash|upi|advance|prepaid|paid)\\b|\\b(?:cod|cash|upi|advance|prepaid|paid)\\s*($NUM)\\b",
+            Pattern.CASE_INSENSITIVE
+        )
+        val payMatcher = paymentAmountPattern.matcher(lower)
+        val paymentAmountDigits = if (payMatcher.find()) (payMatcher.group(1) ?: payMatcher.group(2)) else null
+
+        val labelledAmountDigits = labels["amount"]?.let { extractAmountDigits(it.lowercase(Locale.ROOT)) }
+        val amountDigits = (labelledAmountDigits ?: extractAmountDigits(lower) ?: paymentAmountDigits)
+            ?.takeIf { toAsciiDigits(it) != phone }
+
+
+        // STEP 5: Date resolution (Label first, then absolute, then relative)
         val labelledDate = labels["date"]?.let { FieldExtractors.absoluteDate(it, nowMillis) }
         val absolute = labelledDate ?: FieldExtractors.absoluteDate(trimmed, nowMillis)
         absolute?.note?.let { notes += it }
-        val dueDate = absolute?.iso ?: resolveRelativeDate(tokens, lower, nowMillis)
 
-        // ---- pincode ------------------------------------------------------
+        var rawDateText = absolute?.rawText ?: labels["date"]
+        val dueDate = absolute?.iso ?: run {
+            val rel = resolveRelativeDate(tokens, lower, nowMillis)
+            if (rel != null) {
+                rawDateText = findRelativeDateToken(tokens, lower)
+            }
+            rel
+        }
+
+        val dateResolutionStatus = when {
+            dueDate != null && absolute?.ambiguous != true -> "RESOLVED"
+            dueDate != null && absolute?.ambiguous == true -> "AMBIGUOUS"
+            else -> "NOT_FOUND"
+        }
+        val dateConfidence = when (dateResolutionStatus) {
+            "RESOLVED" -> 1.0f
+            "AMBIGUOUS" -> 0.75f
+            else -> 0.0f
+        }
+
+        // STEP 6: PIN Code extraction
         val pincode = extractPincode(trimmed, amountDigits, phone)
 
-        // Every digit run already claimed by another field, so quantity can
-        // never steal a PIN code, a phone number, a date part or the amount.
+        // Attributes (Color, Size)
+        val attributes = mutableMapOf<String, String>()
+        COLORS.firstOrNull { lower.contains(it) }?.let { attributes["color"] = it }
+        var sizeDigits: String? = null
+        SIZE_PATTERN.matcher(lower).let { m ->
+            if (m.find()) {
+                sizeDigits = toAsciiDigits(m.group(1) ?: "")
+                sizeDigits?.let { attributes["size"] = it }
+            }
+        }
+
+        // Digits claimed by other fields so quantity never steals PIN, phone, dates, amount, or size
         val consumed = buildList {
             amountDigits?.let { toAsciiDigits(it)?.let(::add) }
             phone?.let { add(it.filter { c -> c.isDigit() }) }
             pincode?.let { add(it) }
-            absolute?.iso?.let { iso -> iso.split("-").forEach { add(it.trimStart('0').ifEmpty { "0" }); add(it) } }
-            // Raw date digits as written, e.g. "30", "08", "2026"
-            dateDigitRuns(labels["date"] ?: trimmed).forEach { add(it) }
+            sizeDigits?.let { add(it) }
+            // Only consume digits that actually belonged to a matched explicit date
+            val explicitDateText = absolute?.rawText ?: labels["date"]
+            if (explicitDateText != null) {
+                dateDigitRuns(explicitDateText).forEach { add(it) }
+            }
         }
 
-        // ---- quantity -----------------------------------------------------
+        // STEP 7: Quantity extraction
         val quantity = labels["quantity"]?.let { qtyFromText(it) }
             ?: extractQuantity(tokens, consumed)
 
-        // ---- amount fallback ---------------------------------------------
-        // Only when there is real evidence of money: a payment method or an
-        // amount label. Otherwise "2 cars 500" would invent a price.
+        // STEP 8: Amount fallback
         val amountFromPattern = amountDigits?.let { toAsciiDigits(it)?.toDoubleOrNull() }
         val amount = amountFromPattern ?: fallbackAmount(
             tokens = tokens,
@@ -211,7 +280,7 @@ object DeterministicParser {
             notes += "Amount ₹${amount.toInt()} was inferred without a currency symbol."
         }
 
-        // ---- location -----------------------------------------------------
+        // STEP 9: Location extraction
         val location = labels["location"]?.trim()
             ?: extractAddressClause(trimmed, pincode)
             ?: FieldExtractors.cityMention(tokens)
@@ -219,56 +288,80 @@ object DeterministicParser {
                 notes += "Location \"$it\" was matched from a probable misspelling."
             }
 
-        // ---- attributes ---------------------------------------------------
-        val attributes = mutableMapOf<String, String>()
-        COLORS.firstOrNull { lower.contains(it) }?.let { attributes["color"] = it }
-        SIZE_PATTERN.matcher(lower).let { m ->
-            if (m.find()) toAsciiDigits(m.group(1) ?: "")?.let { attributes["size"] = it }
-        }
-
-        // ---- item: label, else the noun phrase after the quantity ---------
-        val item = labels["item"]?.trim()?.takeIf { it.isNotBlank() }
+        // STEP 10: Item extraction
+        val rawItem = labels["item"]?.trim()?.takeIf { it.isNotBlank() }
             ?: itemAfterQuantity(trimmed, quantity)
+            ?: fallbackItemFromTokens(tokens, consumed)
 
+        val item = rawItem?.takeIf { it.isNotBlank() }
+
+        // STEP 11: Customer name extraction (Strictly guarded against files and units)
         val customer = labels["customer"]?.trim()?.takeIf { it.isNotBlank() }
+            ?: patternCustomerName(trimmed)
             ?: honorificName(trimmed)
-            ?: bareName(trimmed, hasOrderEvidence = quantity != null || amount != null)
+            ?: bareName(trimmed, hasOrderEvidence = quantity != null || amount != null || item != null)
 
         val referencesPrior = tokens.any { it in PRIOR_ORDER_TOKENS } ||
             PRIOR_ORDER_PHRASES.any { lower.contains(it) }
 
-        // ---- confidence from actual extraction ----------------------------
+        // STEP 12: Calculate Field Extraction Scores & Missing Fields
         val missing = mutableListOf<String>()
-        var confidence = 0.0f
-        if (customer != null) confidence += 0.18f else missing += "Customer name"
-        if (quantity != null) confidence += 0.22f else missing += "Quantity"
-        if (!item.isNullOrBlank()) confidence += 0.22f else missing += "Item"
-        if (dueDate != null) confidence += 0.12f else missing += "Delivery date"
-        if (amount != null) confidence += 0.12f else missing += "Amount"
-        if (location != null) confidence += 0.08f else missing += "Location"
-        if (payment != null) confidence += 0.06f else missing += "Payment method"
+        var fieldScore = 0.0f
+        var totalFieldWeight = 0.0f
 
-        // Never claim certainty, and never let a non-order look confident.
-        confidence = confidence.coerceAtMost(0.97f)
-        if (!category.isOrder) {
-            confidence = minOf(confidence, 0.4f)
-            notes += "Classified as ${category.label}, not an order."
-        }
+        totalFieldWeight += 0.20f
+        if (customer != null) fieldScore += 0.20f else missing += "Customer name"
+
+        totalFieldWeight += 0.25f
+        if (item != null) fieldScore += 0.25f else missing += "Item"
+
+        totalFieldWeight += 0.20f
+        if (quantity != null) fieldScore += 0.20f else missing += "Quantity"
+
+        totalFieldWeight += 0.15f
+        if (dueDate != null) fieldScore += 0.15f else missing += "Delivery date"
+
+        totalFieldWeight += 0.10f
+        if (amount != null) fieldScore += 0.10f else missing += "Amount"
+
+        totalFieldWeight += 0.05f
+        if (location != null) fieldScore += 0.05f else missing += "Location"
+
+        totalFieldWeight += 0.05f
+        if (payment != null) fieldScore += 0.05f else missing += "Payment method"
+
+        val fieldExtractionScore = (fieldScore / totalFieldWeight).coerceIn(0.0f, 1.0f)
+        val dateResolutionScore = if (dueDate != null) dateConfidence else if (labels.containsKey("date")) 0.0f else 1.0f
+
+        // Overall Confidence calculation
+        var confidence = fieldExtractionScore.coerceAtMost(0.97f)
         if (absolute?.ambiguous == true) confidence -= 0.10f
         confidence = confidence.coerceIn(0f, 0.97f)
 
-        val needsReview = confidence < 0.7f || absolute?.ambiguous == true || !category.isOrder
+        val needsReview = confidence < 0.70f || absolute?.ambiguous == true || (item == null && quantity == null)
+        val clarificationDecisionScore = 1.0f
 
-        return ParsedMessage(
-            customer = customer,
-            items = listOf(
+        val overallScore = (0.60f * fieldExtractionScore + 0.20f * dateResolutionScore + 0.20f * clarificationDecisionScore).coerceIn(0.0f, 1.0f)
+
+        val itemsList = if (item != null || quantity != null) {
+            listOf(
                 ParsedItem(
-                    description = item?.takeIf { it.isNotBlank() } ?: "Unspecified item",
+                    description = item ?: "Unspecified item",
                     quantity = quantity ?: 1,
                     attributes = attributes,
                 )
-            ),
+            )
+        } else {
+            emptyList()
+        }
+
+        return ParsedMessage(
+            customer = customer,
+            items = itemsList,
             due_date = dueDate,
+            raw_date_text = rawDateText,
+            date_confidence = dateConfidence,
+            date_resolution_status = dateResolutionStatus,
             amount = amount,
             references_prior_order = referencesPrior,
             confidence = confidence,
@@ -278,6 +371,11 @@ object DeterministicParser {
             phone = phone,
             payment_method = payment,
             classification = category,
+            classification_score = classificationScore,
+            field_extraction_score = fieldExtractionScore,
+            date_resolution_score = dateResolutionScore,
+            clarification_decision_score = clarificationDecisionScore,
+            overall_score = overallScore,
             missing_fields = missing,
             review_notes = notes,
         )
@@ -315,142 +413,91 @@ object DeterministicParser {
         return m.group(1) ?: m.group(2)
     }
 
-    /**
-     * Month names, spelled out. The word after a number must be one of THESE to
-     * count as a date - an earlier version accepted any 3-9 letter word, so
-     * "10 bori" and "2 kurta" were read as dates and their digits were struck
-     * from quantity extraction.
-     */
-    private const val MONTH_ALT =
-        "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?" +
-            "|aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
-
-    private val TEXT_DATE_DIGITS = Regex(
-        "\\b(\\d{1,2})\\s*(?:st|nd|rd|th)?[\\s.,-]+(?:$MONTH_ALT)\\b[\\s.,-]*(\\d{4}|\\d{2})?",
-        RegexOption.IGNORE_CASE,
-    )
-    private val MONTH_FIRST_DIGITS = Regex(
-        "\\b(?:$MONTH_ALT)\\b[\\s.,-]+(\\d{1,2})(?:st|nd|rd|th)?[\\s.,-]*(\\d{4}|\\d{2})?",
-        RegexOption.IGNORE_CASE,
-    )
-    private val NUMERIC_DATE_DIGITS = Regex("\\b(\\d{1,4})[/.-](\\d{1,2})[/.-](\\d{2,4})\\b")
-
-    /** Digit runs appearing inside anything date-shaped, so quantity skips them. */
     private fun dateDigitRuns(text: String): List<String> {
-        val out = mutableListOf<String>()
-        for (regex in listOf(NUMERIC_DATE_DIGITS, TEXT_DATE_DIGITS, MONTH_FIRST_DIGITS)) {
-            regex.findAll(text).forEach { m ->
-                m.groupValues.drop(1).filter { it.isNotBlank() }.forEach { out += it }
-            }
+        val runs = mutableListOf<String>()
+        val m = Pattern.compile("\\b(\\d{1,4})\\b").matcher(text)
+        while (m.find()) {
+            val d = m.group(1) ?: continue
+            val n = d.toIntOrNull() ?: continue
+            if (n in 1..31 || n in 1900..2100) runs += d
         }
-        return out
+        return runs
     }
 
     private fun extractPhone(text: String): String? {
         val m = PHONE_PATTERN.matcher(text)
-        if (m.find()) return m.group(1)
-        return null
+        return if (m.find()) m.group(1) else null
     }
 
     private fun extractPincode(text: String, amountDigits: String?, phone: String?): String? {
         val m = PINCODE_PATTERN.matcher(text)
         while (m.find()) {
-            val candidate = m.group(1) ?: continue
-            if (candidate == amountDigits) continue
-            if (phone != null && phone.contains(candidate)) continue
-            return candidate
+            val pin = m.group(1) ?: continue
+            if (pin == amountDigits || (phone != null && phone.contains(pin))) continue
+            return pin
         }
         return null
     }
 
-    private fun qtyFromText(value: String): Int? {
-        val t = tokenize(value.lowercase(Locale.ROOT))
-        return extractQuantity(t, emptyList())
+    private fun qtyFromText(text: String): Int? {
+        toAsciiDigits(text.trim())?.toIntOrNull()?.let { return it }
+        val t = text.lowercase(Locale.ROOT).trim()
+        return NUMBER_WORDS[t] ?: FRACTION_WORDS[t]
     }
 
-    /**
-     * Two passes. A number directly followed by a goods word ("2 food parcels",
-     * "10 bori") is a far stronger quantity signal than a bare number, so it is
-     * preferred. Without this, "500 COD / ... / 2 food parcels" read 500 as the
-     * quantity purely because it appeared first.
-     */
-    private fun extractQuantity(tokens: List<String>, consumedDigits: List<String>): Int? =
-        scanQuantity(tokens, consumedDigits, requireFollowingNoun = true)
-            ?: scanQuantity(tokens, consumedDigits, requireFollowingNoun = false)
+    private fun extractQuantity(tokens: List<String>, consumed: List<String>): Int? {
+        // 1. Check compound Hindi numbers: "do sau" (2 * 100), "teen sau" (3 * 100), "paanch sau" (500)
+        for (i in 0 until tokens.size - 1) {
+            val w1 = tokens[i]
+            val w2 = tokens[i + 1]
+            val v1 = NUMBER_WORDS[w1]
+            if (v1 != null && (w2 == "sau" || w2 == "सौ" || w2 == "hazar" || w2 == "hazaar" || w2 == "हजार")) {
+                val mult = if (w2 == "sau" || w2 == "सौ") 100 else 1000
+                return v1 * mult
+            }
+        }
 
-    private fun scanQuantity(
-        tokens: List<String>,
-        consumedDigits: List<String>,
-        requireFollowingNoun: Boolean,
-    ): Int? {
-        tokens.forEachIndexed { i, token ->
-            val prev = tokens.getOrNull(i - 1) ?: ""
-            val next = tokens.getOrNull(i + 1) ?: ""
-            val nextIsNoun = next.isNotEmpty() &&
-                toAsciiDigits(next) == null &&
-                next !in ITEM_STOP &&
-                next !in CURRENCY &&
-                next !in ADDRESS_TOKENS &&
-                next !in HONORIFICS &&
-                next.none { it.isDigit() }
-
-            val digits = toAsciiDigits(token)
-            if (digits != null) {
-                val isClaimed = digits in consumedDigits || prev in CURRENCY || next in CURRENCY
-                val isMeasure = prev in MEASURE_PREFIX
-                if (!isClaimed && !isMeasure && (!requireFollowingNoun || nextIsNoun)) {
-                    digits.toIntOrNull()?.let { if (it > 0) return it }
+        // 2. Check tokens
+        for (token in tokens) {
+            val ascii = toAsciiDigits(token)
+            if (ascii != null && ascii !in consumed) {
+                val n = ascii.toIntOrNull()
+                // A quantity is normally 1-5000. Reject years (1900..2100).
+                if (n != null && n in 1..5000 && n !in 1900..2100) {
+                    return n
                 }
-                return@forEachIndexed
             }
-
-            FRACTION_WORDS[token]?.let { if (!requireFollowingNoun || nextIsNoun) return it }
-            NUMBER_WORDS[token]?.let { qty ->
-                if (token in AMBIGUOUS_NUMERALS && prev in IMPERATIVE_STEMS) return@forEachIndexed
-                val multiplier = NUMBER_WORDS[next]
-                if (multiplier != null && multiplier >= 100) return qty * multiplier
-                if (qty >= 100) return@forEachIndexed
-                if (!requireFollowingNoun || nextIsNoun) return qty
-            }
+            val wordVal = NUMBER_WORDS[token]
+            if (wordVal != null && token !in consumed && wordVal in 1..5000) return wordVal
         }
         return null
     }
 
-    /**
-     * Largest unclaimed number, but only when the message shows money evidence
-     * (a payment method or an Amount label). Without that guard, "2 cars 500"
-     * would invent a price.
-     */
     private fun fallbackAmount(
         tokens: List<String>,
         consumed: List<String>,
         quantity: Int?,
-        hasMoneyEvidence: Boolean,
+        hasMoneyEvidence: Boolean
     ): Double? {
         if (!hasMoneyEvidence) return null
-        return tokens.mapNotNull { toAsciiDigits(it) }
-            .filter { it !in consumed && it.none { c -> c == '.' } }
-            .mapNotNull { it.toIntOrNull() }
-            .filter { it >= 10 && it != quantity }
-            .maxOrNull()
-            ?.toDouble()
+        for (t in tokens) {
+            val digits = toAsciiDigits(t) ?: continue
+            if (digits in consumed) continue
+            val v = digits.toDoubleOrNull() ?: continue
+            if (quantity != null && v == quantity.toDouble()) continue
+            if (v >= 10.0) return v
+        }
+        return null
     }
 
-    /**
-     * The noun phrase immediately after the quantity, stopping at a label word,
-     * another number, or a clause break. This replaces the old "everything left
-     * over is the item" rule, which produced strings like
-     * "2x nakul food parcels location bhopal delivery august amount cod".
-     */
-    private fun itemAfterQuantity(rawText: String, quantity: Int?): String? {
-        for (line in rawText.split(CLAUSE_SPLIT)) {
+    private fun itemAfterQuantity(originalText: String, quantity: Int?): String? {
+        if (quantity == null) return null
+        for (line in originalText.split(Regex("[\\n\\r]+"))) {
             val words = line.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-            if (words.isEmpty()) continue
-
             val anchor = words.indexOfFirst { w ->
-                val lw = w.lowercase(Locale.ROOT).trim('.', ':')
+                val lw = w.lowercase(Locale.ROOT).trim('.', ':', ',')
                 val d = toAsciiDigits(lw)?.toIntOrNull()
-                (quantity != null && d == quantity) || NUMBER_WORDS[lw] == quantity
+                d == quantity || NUMBER_WORDS[lw] == quantity
             }
             if (anchor == -1) continue
 
@@ -466,6 +513,30 @@ object DeterministicParser {
                 if (phrase.size >= 4) break
             }
             if (phrase.isNotEmpty()) return phrase.joinToString(" ").lowercase(Locale.ROOT)
+        }
+        return null
+    }
+
+    private fun fallbackItemFromTokens(tokens: List<String>, consumed: List<String>): String? {
+        val candidates = tokens.filter { t ->
+            t !in consumed && t !in ITEM_STOP && t !in CURRENCY && t !in HONORIFICS &&
+                t !in ADDRESS_TOKENS && t !in TODAY && t !in TOMORROW &&
+                t !in DAY_AFTER && t !in WEEKDAYS && t.length >= 3 && toAsciiDigits(t) == null
+        }
+        return candidates.take(3).joinToString(" ").takeIf { it.isNotBlank() }
+    }
+
+    /** Contextual customer names: "for Rahul", "to Rahul", "Rahul ko". */
+    private fun patternCustomerName(originalText: String): String? {
+        val forToRegex = Regex("(?i)\\b(?:for|to)\\s+([\\p{L}]{3,15})\\b")
+        forToRegex.find(originalText)?.let { m ->
+            val name = m.groupValues[1]
+            if (isNameLike(name)) return capitalize(name)
+        }
+        val koRegex = Regex("(?i)\\b([\\p{L}]{3,15})\\s+ko\\b")
+        koRegex.find(originalText)?.let { m ->
+            val name = m.groupValues[1]
+            if (isNameLike(name)) return capitalize(name)
         }
         return null
     }
@@ -493,31 +564,28 @@ object DeterministicParser {
     }
 
     /**
-     * A standalone word that is not any other known thing. Only used when the
-     * message already looks like an order, so a vague text does not acquire a
-     * fabricated customer.
+     * Clean name extraction at the start of a message or standalone name line.
      */
     private fun bareName(originalText: String, hasOrderEvidence: Boolean): String? {
         if (!hasOrderEvidence) return null
 
         for (line in originalText.split(Regex("[\\n\\r]+"))) {
             val words = line.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-            // A line that is just a name, 1-3 words, no digits, no keywords.
             if (words.isEmpty() || words.size > 3) continue
-            if (words.any { w -> w.any { it.isDigit() } }) continue
+            if (words.any { w -> w.any { it.isDigit() } || w.contains("(") || w.contains(")") }) continue
             if (words.any { !isNameLike(it) }) continue
             return capitalize(words.first())
         }
 
-        // Single-line messy message: first name-like token.
         val words = originalText.split(Regex("[\\s,]+")).filter { it.isNotBlank() }
         return words.firstOrNull { isNameLike(it) }?.let { capitalize(it) }
     }
 
     private fun isNameLike(word: String): Boolean {
-        val lc = word.lowercase(Locale.ROOT).trim('.', ':', ',')
+        val lc = word.lowercase(Locale.ROOT).trim('.', ':', ',', '(', ')', '_')
         if (lc.length < 3) return false
         if (lc.any { it.isDigit() }) return false
+        if (word.contains("(") || word.contains(")") || word.contains("_") || word.contains(".")) return false
         if (lc in NOT_A_NAME || lc in ITEM_STOP || lc in HONORIFICS) return false
         if (lc in CURRENCY || lc in ADDRESS_TOKENS || lc in MEASURE_PREFIX) return false
         if (lc in NUMBER_WORDS || lc in FRACTION_WORDS || lc in PRIOR_ORDER_TOKENS) return false
@@ -528,6 +596,11 @@ object DeterministicParser {
     }
 
     private fun capitalize(word: String) = word.replaceFirstChar { it.uppercase() }
+
+    private fun findRelativeDateToken(tokens: List<String>, lowerText: String): String? {
+        if (NEXT_WEEK_PHRASES.any { lowerText.contains(it) }) return "next week"
+        return tokens.firstOrNull { it in TODAY || it in TOMORROW || it in DAY_AFTER || it in WEEKDAYS }
+    }
 
     private fun resolveRelativeDate(tokens: List<String>, lowerText: String, nowMillis: Long): String? {
         WEEKDAYS.entries.firstOrNull { (name, _) -> tokens.contains(name) }?.let { (_, dow) ->
@@ -547,7 +620,6 @@ object DeterministicParser {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
     }
 
-    /** Strictly the next occurrence, never today. */
     private fun nextWeekday(targetDow: Int, nowMillis: Long): String {
         val cal = Calendar.getInstance().apply { timeInMillis = nowMillis }
         do {
@@ -566,7 +638,6 @@ object DeterministicParser {
         return hits.joinToString(", ").replace(Regex("\\s+"), " ").trim().takeIf { it.isNotBlank() }
     }
 
-    /** Edit-distance-1 city match, for obvious typos like "Bhopl". */
     private fun fuzzyCity(tokens: List<String>): String? {
         for (t in tokens) {
             if (t.length < 5) continue

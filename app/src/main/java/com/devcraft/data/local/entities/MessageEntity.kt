@@ -49,6 +49,14 @@ data class MessageEntity(
     val confidence: Float = 0.0f,
     val parsedOrderId: String? = null,       // FK link to OrderEntity once converted
     val needsClarification: Boolean = false,
+    val classification: String = "UNKNOWN",
+    val classificationScore: Float = 0.0f,
+    val fieldExtractionScore: Float = 0.0f,
+    val dateResolutionScore: Float = 0.0f,
+    val clarificationDecisionScore: Float = 0.0f,
+    val overallScore: Float = 0.0f,
+    val rawDateText: String? = null,
+    val resolvedDate: String? = null,
     val parseError: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis()

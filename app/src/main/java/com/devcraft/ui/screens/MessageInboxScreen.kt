@@ -221,40 +221,67 @@ fun MessageCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Footer: Status Badge + Interpret/View CTA
+            // Footer: Category Badge, Status Badge + Interpret/View CTA
+            val isOrder = message.classification == "ORDER" ||
+                (message.classification == "UNKNOWN" && (message.originalText.contains("food", ignoreCase = true) || message.originalText.contains("parcel", ignoreCase = true) || message.originalText.contains("chahiye", ignoreCase = true)))
+            
+            val categoryLabel = when (message.classification) {
+                "ORDER" -> "ORDER"
+                "DOCUMENT_FILE" -> "DOCUMENT"
+                "BANK_FINANCIAL" -> "BANK"
+                "OTP_AUTHENTICATION" -> "OTP"
+                "DELIVERY_TRACKING" -> "DELIVERY"
+                "PERSONAL_MESSAGE" -> "PERSONAL"
+                "PROMOTIONAL" -> "PROMOTION"
+                "SYSTEM_NOTIFICATION" -> "SYSTEM"
+                else -> if (message.originalText.contains(".pdf", ignoreCase = true) || message.originalText.contains("pages", ignoreCase = true)) "DOCUMENT"
+                else if (message.originalText.contains("otp", ignoreCase = true)) "OTP"
+                else if (message.originalText.contains("credited", ignoreCase = true) || message.originalText.contains("debited", ignoreCase = true)) "BANK"
+                else if (isOrder) "ORDER"
+                else "UNKNOWN"
+            }
+
+            val categoryColor = when (categoryLabel) {
+                "ORDER" -> Color(0xFF2E7D32)
+                "BANK" -> Color(0xFF1565C0)
+                "OTP" -> Color(0xFFC62828)
+                "DOCUMENT" -> Color(0xFF6A1B9A)
+                "DELIVERY" -> Color(0xFF00838F)
+                "PROMOTION" -> Color(0xFFE65100)
+                else -> Color(0xFF546E7A)
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Status badge
+                // Category + Status
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    MessageStatusChip(status = message.status)
-                    if (message.confidence > 0f) {
-                        val confTint = when {
-                            message.confidence >= 0.8f && !message.needsClarification -> Color(0xFF2E7D32)
-                            message.confidence >= 0.7f -> Color(0xFFE65100)
-                            else -> Color(0xFFC62828)
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                if (message.needsClarification) Icons.Default.WarningAmber
-                                else Icons.Default.Verified,
-                                contentDescription = null,
-                                tint = confTint,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
-                            Text(
-                                text = "${(message.confidence * 100).toInt()}%",
-                                fontSize = 11.sp,
-                                color = confTint,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = categoryColor.copy(alpha = 0.12f)
+                    ) {
+                        Text(
+                            text = categoryLabel,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = categoryColor,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+
+                    if (isOrder) {
+                        MessageStatusChip(status = message.status)
+                    } else {
+                        Text(
+                            text = "Not an order",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
 
@@ -265,7 +292,7 @@ fun MessageCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("View Order", fontSize = 13.sp)
                         }
-                    } else {
+                    } else if (isOrder) {
                         Button(
                             onClick = onClick,
                             contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
@@ -275,12 +302,21 @@ fun MessageCard(
                             Spacer(modifier = Modifier.width(4.dp))
                             Text("Interpret", fontSize = 13.sp)
                         }
+                    } else {
+                        OutlinedButton(
+                            onClick = onClick,
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("View Message", fontSize = 12.sp)
+                        }
                     }
                 }
             }
         }
     }
 }
+
 
 private fun formatTimestamp(millis: Long): String {
     val diff = System.currentTimeMillis() - millis

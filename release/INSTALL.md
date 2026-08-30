@@ -5,10 +5,10 @@
 | Field | Value |
 | :--- | :--- |
 | File | `DevCraft-Master-debug.apk` |
-| Size | 21,485,696 bytes (20.5 MB) |
-| SHA-256 | `738ae2c74fff1574c31fa8f0d267f9db989aeaa7a43ccc03286e6cac33174a6b` |
+| SHA-256 | `5131CD816B5FB38DA583664E3392E665D78C6A19F729172657DFFA12AF46C262` |
 | Package ID | `com.neutron.devcraft` |
 | Version | 1.0 (versionCode 1) |
+
 | Min Android | 8.0 Oreo (API 26) |
 | Target | Android 14 (API 34) |
 | Build type | **debug** — signed with the local debug keystore |
@@ -36,50 +36,42 @@ Sideloading instead: copy the APK to the phone and open it. Android will ask you
 to allow installs from that source. Because this is a debug build, Play Protect
 may show a warning — expected for an unpublished APK.
 
-## Release APK
+## Multi-Device Synchronization Testing (Two Phones)
 
-**Not produced.** No signing keystore is configured, and fabricating one would
-give you an artifact you cannot reproduce or update. `app/build.gradle.kts` has
-no `signingConfigs` block for release.
+To verify multi-device synchronization end-to-end between Phone A and Phone B:
 
-To produce one:
+1. **Install APK on both Phone A and Phone B.**
+2. **Sign into the SAME account on both phones** (via Email/Password or Phone OTP).
+3. **Phone A Offline Creation:**
+   - Put Phone A into Airplane Mode.
+   - Ingest / create an order (e.g. "Nakul 2 food parcels Bhopal 500 COD").
+   - Confirm order. Notice "Operations pending sync: 1" in Settings and on Dashboard.
+4. **Phone A Reconnect:**
+   - Disable Airplane Mode on Phone A.
+   - SyncEngine automatically triggers sync upon network restoration (or tap **Sync now**).
+   - "Operations pending sync" drops to 0, and status shows `ONLINE (✓ All changes synced)`.
+5. **Phone B Initial Sync / Realtime Ingestion:**
+   - Open Phone B while connected to internet.
+   - The order created on Phone A immediately appears on Phone B via Firestore synchronization into Room.
+6. **Phone B Edit → Phone A Update:**
+   - On Phone B, update the order status to `COMPLETED`.
+   - On Phone A, the status updates in real time to `COMPLETED`.
+7. **Phone A Delete → Phone B Propagation:**
+   - On Phone A, delete the order.
+   - The deletion tombstone synchronizes and removes the order from Phone B without data recreation.
 
-```powershell
-keytool -genkeypair -v -keystore devcraft-release.jks `
-  -keyalg RSA -keysize 2048 -validity 10000 -alias devcraft
+## Firestore Console Security Rules
+
+Ensure `firestore.rules` is deployed in your Firebase console:
+
+```javascript
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
 ```
 
-Add a `signingConfigs` block reading the passwords from `local.properties`
-(gitignored — never inline them), then `./gradlew assembleRelease`. Register the
-new keystore's SHA-1 and SHA-256 in Firebase as well, or Phone Auth will work in
-debug and fail in release.
-
-## Note on distribution
-
-The APK is **not committed to git** — `.gitignore` excludes `release/*.apk`. A
-20 MB binary in version control is what made this repo's history misleading in
-the first place (a stale committed APK hid the fact the tree did not compile).
-
-Attach it to a GitHub Release instead:
-
-```bash
-gh release create v1.0 release/DevCraft-Master-debug.apk release/SHA256SUMS.txt \
-  --title "DevCraft 1.0" --notes-file release/INSTALL.md
-```
-
-## First run
-
-1. **Launch.** Without `google-services.json` the app opens straight to the
-   Message Inbox — no login. With it configured, the login screen appears; you
-   can sign in or tap **Continue offline without signing in**.
-2. **Grant notifications** when prompted (Android 13+). Declining only disables
-   due-date reminders.
-3. **Share a message in:** open WhatsApp → long-press an order message → Share →
-   **DevCraft**. It lands in the inbox, already parsed.
-   Optionally enable **SMS order capture** on the dashboard to also ingest
-   incoming customer SMS — see `docs/SMS_INGESTION.md` for the Play Store
-   policy caveat.
-4. Tap **Interpret** → review the extracted customer, date, amount and items →
-   **Confirm & Create Room Order**.
-
-Everything above works in airplane mode.

@@ -8,10 +8,16 @@ import java.util.UUID
 data class OperationEntity(
     @PrimaryKey val operationId: String = UUID.randomUUID().toString(),
     val deviceId: String,
-    val entityType: String, // CUSTOMER, ORDER, ORDER_ITEM
+    val userId: String = "user-default",
+    val entityType: String, // CUSTOMER, ORDER, ORDER_ITEM, MESSAGE
     val entityId: String,
-    val operationType: String, // CREATE, UPDATE, DELETE
+    val operationType: String, // CREATE, UPDATE, DELETE, RESTORE, STATUS_CHANGE
+    val version: Int = 1,
+    val baseVersion: Int = 0,
     val changedFieldsJson: String,
     val timestamp: Long = System.currentTimeMillis(),
-    val syncStatus: String = "PENDING" // PENDING, IN_FLIGHT, SYNCED, FAILED
+    val syncStatus: String = "PENDING", // PENDING, IN_FLIGHT, SYNCED, FAILED
+    val hlcTimestamp: String? = null,
+    val logicalClock: Long = 0L,
+    val createdAt: Long = System.currentTimeMillis()
 )

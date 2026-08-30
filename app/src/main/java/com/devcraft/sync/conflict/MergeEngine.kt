@@ -95,9 +95,10 @@ object MergeEngine {
         val winningFields = LinkedHashMap<String, String?>()
         val conflicts = mutableListOf<ConflictRecord>()
 
-        // Disjoint fields never interact: each field is resolved independently,
-        // so edits to different fields merge cleanly with no conflict logged.
-        val byField = operations.groupBy { it.field }
+        // Deduplicate retransmitted operations by unique operationId for idempotency
+        val distinctOps = operations.distinctBy { it.operationId }
+        val byField = distinctOps.groupBy { it.field }
+
 
         for (field in byField.keys.sorted()) {
             val ordered = byField.getValue(field).sortedWith(PRECEDENCE)

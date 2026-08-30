@@ -60,9 +60,18 @@ class MessageIngestor(
             status = MessageStatus.PARSED.name,
             confidence = parsed.confidence,
             needsClarification = parsed.needs_clarification,
+            classification = parsed.classification.name,
+            classificationScore = parsed.classification_score,
+            fieldExtractionScore = parsed.field_extraction_score,
+            dateResolutionScore = parsed.date_resolution_score,
+            clarificationDecisionScore = parsed.clarification_decision_score,
+            overallScore = parsed.overall_score,
+            rawDateText = parsed.raw_date_text,
+            resolvedDate = parsed.due_date,
             createdAt = now,
             updatedAt = now,
         )
+
 
         db.withTransaction {
             messageDao.insertMessage(entity)

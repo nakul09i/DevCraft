@@ -23,7 +23,7 @@ internal object FieldExtractors {
 
     /** Canonical field -> label aliases a merchant actually types. */
     private val LABELS: Map<String, List<String>> = mapOf(
-        "customer" to listOf("name", "customer", "customer name", "cust", "party", "naam", "नाम", "ग्राहक"),
+        "customer" to listOf("name", "customer", "customer name", "cust", "party", "naam", "नाम", "ग्राहक", "for", "to"),
         "phone" to listOf("phone", "mobile", "contact", "mob", "no", "number", "फोन", "मोबाइल"),
         "item" to listOf("item", "items", "product", "goods", "maal", "saman", "samaan", "सामान", "माल"),
         "quantity" to listOf("qty", "quantity", "nos", "count", "मात्रा"),
@@ -33,191 +33,203 @@ internal object FieldExtractors {
         "payment" to listOf("payment", "payment method", "pay", "mode", "payment mode", "भुगतान"),
     )
 
-    private val LABEL_LINE = Pattern.compile("^\\s*([\\p{L} ]{2,20})\\s*[:\\-–]\\s*(.+)$")
+    private val LABEL_LINE = Pattern.compile("^\\s*([\\p{L} ]{2,20})\\s*:\\s*(.+)$")
+    private val INLINE_LABEL = Pattern.compile(
+        "\\b(Location|Address|Delivery|Date|Amount|Customer|Name|Qty|Quantity|Item|Payment)\\s*:\\s*([^\\n\\r,;]+)",
+        Pattern.CASE_INSENSITIVE
+    )
 
     /**
-     * Parses "Label: value" lines. Returns canonical field -> raw value.
-     * Label-driven parsing is what makes field order irrelevant.
+     * Parses "Label: value" lines and inline label tokens.
      */
     fun labelledFields(rawText: String): Map<String, String> {
         val found = mutableMapOf<String, String>()
+
+        // 1. Line-by-line matching
         for (line in rawText.split(Regex("[\\n\\r]+"))) {
             val m = LABEL_LINE.matcher(line.trim())
-            if (!m.matches()) continue
-            val label = m.group(1)?.trim()?.lowercase(Locale.ROOT) ?: continue
-            val value = m.group(2)?.trim() ?: continue
-            if (value.isEmpty()) continue
+            if (m.matches()) {
+                val label = m.group(1)?.trim()?.lowercase(Locale.ROOT) ?: continue
+                val value = m.group(2)?.trim() ?: continue
+                if (value.isNotEmpty()) {
+                    val field = LABELS.entries.firstOrNull { (_, aliases) -> label in aliases }?.key
+                    if (field != null && !found.containsKey(field)) {
+                        found[field] = value
+                    }
+                }
+            }
+        }
 
+        // 2. Inline label matching
+        val matcher = INLINE_LABEL.matcher(rawText)
+        while (matcher.find()) {
+            val label = matcher.group(1)?.trim()?.lowercase(Locale.ROOT) ?: continue
+            val value = matcher.group(2)?.trim() ?: continue
             val field = LABELS.entries.firstOrNull { (_, aliases) -> label in aliases }?.key
             if (field != null && !found.containsKey(field)) {
                 found[field] = value
             }
         }
+
         return found
     }
 
     // ------------------------------------------------------------------ payment
 
     private val PAYMENT_RULES: List<Pair<Regex, String>> = listOf(
-        Regex("\\bcod\\b|cash on delivery|cash-on-delivery") to "COD",
-        Regex("\\bupi\\b|gpay|google pay|phonepe|phone pe|paytm|bhim") to "UPI",
-        Regex("\\badvance\\b|\\bprepaid\\b|paid in advance|peshgi") to "ADVANCE",
-        Regex("\\bcard\\b|debit card|credit card") to "CARD",
-        Regex("\\bnet ?banking\\b|neft|imps") to "BANK_TRANSFER",
-        Regex("\\budhaar\\b|\\budhar\\b|\\bcredit\\b|baad me|उधार") to "CREDIT",
-        Regex("\\bcash\\b|nagad|नकद") to "CASH",
+        Regex("(?i)\\bcod\\b|cash on delivery|cash-on-delivery") to "COD",
+        Regex("(?i)\\bupi\\b|gpay|google pay|phonepe|phone pe|paytm|bhim") to "UPI",
+        Regex("(?i)\\badvance\\b|\\bprepaid\\b|paid in advance|peshgi") to "ADVANCE",
+        Regex("(?i)\\bcard\\b|debit card|credit card") to "CARD",
+        Regex("(?i)\\bnet ?banking\\b|neft|imps") to "BANK_TRANSFER",
+        Regex("(?i)\\budhaar\\b|\\budhar\\b|\\bcredit\\b|baad me|उधार") to "CREDIT",
+        Regex("(?i)\\bcash\\b|nagad|नकद") to "CASH",
     )
 
-    fun paymentMethod(lowerText: String): String? =
-        PAYMENT_RULES.firstOrNull { (regex, _) -> regex.containsMatchIn(lowerText) }?.second
+    fun paymentMethod(lowerText: String): String? {
+        for ((pattern, canonical) in PAYMENT_RULES) {
+            if (pattern.containsMatchIn(lowerText)) return canonical
+        }
+        return null
+    }
 
     // ------------------------------------------------------------------ dates
 
-    private val MONTHS: Map<String, Int> = buildMap {
-        val full = listOf(
-            "january", "february", "march", "april", "may", "june",
-            "july", "august", "september", "october", "november", "december",
-        )
-        full.forEachIndexed { i, name ->
-            put(name, i + 1)
-            put(name.take(3), i + 1)
-        }
-        put("sept", 9)
-    }
-
-    /**
-     * Month names are validated inside the pattern, not afterwards. An earlier
-     * version accepted any 3-9 letter word and post-checked it, which let
-     * "2 parcels 30" match first and swallow the digits of the real date.
-     */
-    private const val MONTH_ALT =
-        "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?" +
-            "|aug(?:ust)?|sep(?:t)?(?:ember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?"
-
-    /** "30 August 2026", "30 aug 2026" */
-    private val TEXT_DATE = Pattern.compile(
-        "\\b(\\d{1,2})\\s*(?:st|nd|rd|th)?[\\s.,-]+($MONTH_ALT)\\b[\\s.,-]*(\\d{4}|\\d{2})?",
-        Pattern.CASE_INSENSITIVE,
+    private val MONTHS: Map<String, Int> = mapOf(
+        "january" to 1, "jan" to 1, "जनवरी" to 1,
+        "february" to 2, "feb" to 2, "फ़रवरी" to 2, "फरवरी" to 2,
+        "march" to 3, "mar" to 3, "मार्च" to 3,
+        "april" to 4, "apr" to 4, "अप्रैल" to 4,
+        "may" to 5, "मई" to 5,
+        "june" to 6, "jun" to 6, "जून" to 6,
+        "july" to 7, "jul" to 7, "जुलाई" to 7,
+        "august" to 8, "aug" to 8, "अगस्त" to 8,
+        "september" to 9, "sep" to 9, "sept" to 9, "सितंबर" to 9,
+        "october" to 10, "oct" to 10, "अक्टूबर" to 10,
+        "november" to 11, "nov" to 11, "नवंबर" to 11,
+        "december" to 12, "dec" to 12, "दिसंबर" to 12,
     )
-    /** "aug 30 2026" */
-    private val MONTH_FIRST_DATE = Pattern.compile(
-        "\\b($MONTH_ALT)\\b[\\s.,-]+(\\d{1,2})(?:st|nd|rd|th)?[\\s.,-]*(\\d{4}|\\d{2})?",
-        Pattern.CASE_INSENSITIVE,
+
+    private const val MONTH_ALT = "january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec|जनवरी|फ़रवरी|फरवरी|मार्च|अप्रैल|मई|जून|जुलाई|अगस्त|सितंबर|अक्टूबर|नवंबर|दिसंबर"
+
+    private val DATE_DMY_SLASH = Pattern.compile(
+        "\\b(0?[1-9]|[12][0-9]|3[01])[-/.](0?[1-9]|1[0-2])[-/.](20\\d{2}|\\d{2})\\b"
     )
-    /** 30/08/2026, 30-08-2026, 2026-08-30 */
-    private val NUMERIC_DATE = Pattern.compile("\\b(\\d{1,4})[/.-](\\d{1,2})[/.-](\\d{2,4})\\b")
+    private val DATE_ISO = Pattern.compile(
+        "\\b(20\\d{2})[-/.](0?[1-9]|1[0-2])[-/.](0?[1-9]|[12][0-9]|3[01])\\b"
+    )
+    private val DATE_NAMED_MONTH = Pattern.compile(
+        "\\b(0?[1-9]|[12][0-9]|3[01])(?:st|nd|rd|th)?\\s+($MONTH_ALT)\\s*(20\\d{2}|\\d{2})?\\b",
+        Pattern.CASE_INSENSITIVE
+    )
+    private val DATE_MONTH_FIRST = Pattern.compile(
+        "\\b($MONTH_ALT)\\s+(0?[1-9]|[12][0-9]|3[01])(?:st|nd|rd|th)?(?:,)?\\s*(20\\d{2}|\\d{2})?\\b",
+        Pattern.CASE_INSENSITIVE
+    )
 
-    data class DateResult(val iso: String, val ambiguous: Boolean, val note: String? = null)
+    data class DateResult(
+        val iso: String,
+        val rawText: String? = null,
+        val ambiguous: Boolean = false,
+        val note: String? = null,
+    )
 
-    /**
-     * Absolute date in any supported written form. Returns null when none is
-     * present - never a guess.
-     */
-    fun absoluteDate(rawText: String, nowMillis: Long): DateResult? {
-        NUMERIC_DATE.matcher(rawText).let { m ->
-            if (m.find()) {
-                val a = m.group(1)!!.toInt()
-                val b = m.group(2)!!.toInt()
-                val c = m.group(3)!!
-                // yyyy-MM-dd
-                if (m.group(1)!!.length == 4) {
-                    return isoOrNull(a, b, c.toInt())?.let { DateResult(it, false) }
-                }
-                val year = normaliseYear(c.toInt())
-                // Both <= 12: genuinely ambiguous. Assume day-first (Indian
-                // convention) but flag it rather than pretend certainty.
-                val ambiguous = a <= 12 && b <= 12 && a != b
-                return isoOrNull(year, b, a)?.let {
-                    DateResult(
-                        iso = it,
-                        ambiguous = ambiguous,
-                        note = if (ambiguous)
-                            "Date $a/$b could be day-month or month-day. Read as day-first."
-                        else null,
-                    )
-                }
-            }
+    fun absoluteDate(text: String, nowMillis: Long): DateResult? {
+        val currentYear = Calendar.getInstance().apply { timeInMillis = nowMillis }.get(Calendar.YEAR)
+
+        // 1. ISO YYYY-MM-DD
+        val mIso = DATE_ISO.matcher(text)
+        if (mIso.find()) {
+            val y = mIso.group(1)!!.toInt()
+            val m = mIso.group(2)!!.toInt()
+            val d = mIso.group(3)!!.toInt()
+            val raw = mIso.group(0)
+            return DateResult(formatIso(y, m, d), rawText = raw)
         }
 
-        TEXT_DATE.matcher(rawText).let { m ->
-            while (m.find()) {
-                val day = m.group(1)!!.toInt()
-                val month = MONTHS[m.group(2)!!.lowercase(Locale.ROOT)] ?: continue
-                val year = m.group(3)?.toIntOrNull()?.let { normaliseYear(it) }
-                    ?: yearOf(nowMillis)
-                isoOrNull(year, month, day)?.let { return DateResult(it, false) }
-            }
+        // 2. Day Month Year (e.g. 30 August 2026, 30th Aug, 30 Aug)
+        val mNamed = DATE_NAMED_MONTH.matcher(text)
+        while (mNamed.find()) {
+            val monthName = mNamed.group(2)!!.lowercase(Locale.ROOT)
+            val monthNum = MONTHS[monthName] ?: continue
+            val d = mNamed.group(1)!!.toInt()
+            val yRaw = mNamed.group(3)
+            val y = parseYear(yRaw, currentYear)
+            val raw = mNamed.group(0)
+            return DateResult(formatIso(y, monthNum, d), rawText = raw)
         }
 
-        MONTH_FIRST_DATE.matcher(rawText).let { m ->
-            while (m.find()) {
-                val month = MONTHS[m.group(1)!!.lowercase(Locale.ROOT)] ?: continue
-                val day = m.group(2)!!.toInt()
-                val year = m.group(3)?.toIntOrNull()?.let { normaliseYear(it) }
-                    ?: yearOf(nowMillis)
-                isoOrNull(year, month, day)?.let { return DateResult(it, false) }
+        // 3. Month Day Year (e.g. August 30, 2026)
+        val mMonthFirst = DATE_MONTH_FIRST.matcher(text)
+        while (mMonthFirst.find()) {
+            val monthName = mMonthFirst.group(1)!!.lowercase(Locale.ROOT)
+            val monthNum = MONTHS[monthName] ?: continue
+            val d = mMonthFirst.group(2)!!.toInt()
+            val yRaw = mMonthFirst.group(3)
+            val y = parseYear(yRaw, currentYear)
+            val raw = mMonthFirst.group(0)
+            return DateResult(formatIso(y, monthNum, d), rawText = raw)
+        }
+
+        // 4. DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+        val mSlash = DATE_DMY_SLASH.matcher(text)
+        while (mSlash.find()) {
+            val a = mSlash.group(1)!!.toInt()
+            val b = mSlash.group(2)!!.toInt()
+            val yRaw = mSlash.group(3)
+            val y = parseYear(yRaw, currentYear)
+            val raw = mSlash.group(0)
+
+            if (a > 12 && b <= 12) {
+                return DateResult(formatIso(y, b, a), rawText = raw)
             }
+            if (b > 12 && a <= 12) {
+                return DateResult(formatIso(y, a, b), rawText = raw)
+            }
+            // Indian commerce default: DD/MM/YYYY
+            return DateResult(
+                iso = formatIso(y, b, a),
+                rawText = raw,
+                ambiguous = true,
+                note = "Date \"$raw\" was read as $a/${b}/$y (day-month-year); could also be month-first."
+            )
         }
 
         return null
     }
 
-    private fun normaliseYear(y: Int) = if (y < 100) 2000 + y else y
-
-    private fun yearOf(millis: Long) = Calendar.getInstance()
-        .apply { timeInMillis = millis }
-        .get(Calendar.YEAR)
-
-    private fun isoOrNull(year: Int, month: Int, day: Int): String? {
-        if (month !in 1..12 || day !in 1..31) return null
-        val cal = Calendar.getInstance().apply {
-            isLenient = false
-            clear()
-            set(year, month - 1, day)
-        }
-        return try {
-            SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-        } catch (e: Exception) {
-            null
-        }
+    private fun parseYear(raw: String?, currentYear: Int): Int {
+        if (raw == null || raw.isBlank()) return currentYear
+        val n = raw.trim().toIntOrNull() ?: return currentYear
+        return if (n < 100) 2000 + n else n
     }
 
-    /** UI format. Internal storage stays ISO. */
+    private fun formatIso(y: Int, m: Int, d: Int): String =
+        String.format(Locale.US, "%04d-%02d-%02d", y, m, d)
+
     fun displayDate(iso: String?): String? {
-        if (iso.isNullOrBlank()) return null
-        return try {
-            val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply { isLenient = false }
-                .parse(iso) ?: return null
-            SimpleDateFormat("dd/MM/yyyy", Locale.US).format(parsed)
-        } catch (e: Exception) {
-            null
-        }
+        if (iso == null || !iso.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) return null
+        val parts = iso.split("-")
+        return "${parts[2]}/${parts[1]}/${parts[0]}"
     }
 
-    // ------------------------------------------------------------------ location
+    // ------------------------------------------------------------------ cities
 
-    /**
-     * A deliberately small list of cities, used only when no Location label and
-     * no address vocabulary is present.
-     *
-     * ponytail: a hardcoded list will miss most towns in India. It exists so
-     * "nakul bhopal 2 parcels" resolves at all; a labelled "Location:" always
-     * wins over it. Upgrade path is an offline place gazetteer, or Mappls
-     * geocoding once a key exists.
-     */
     val KNOWN_CITIES = setOf(
-        "indore", "bhopal", "jabalpur", "gwalior", "ujjain", "dewas", "sagar",
-        "mumbai", "pune", "nagpur", "nashik", "thane",
-        "delhi", "noida", "gurgaon", "gurugram", "faridabad", "ghaziabad",
-        "jaipur", "jodhpur", "udaipur", "kota", "ajmer",
-        "lucknow", "kanpur", "agra", "varanasi", "prayagraj", "meerut",
-        "ahmedabad", "surat", "vadodara", "rajkot",
-        "bengaluru", "bangalore", "mysuru", "hubli",
-        "hyderabad", "chennai", "coimbatore", "madurai",
-        "kolkata", "howrah", "patna", "ranchi", "raipur", "bhubaneswar",
-        "chandigarh", "ludhiana", "amritsar", "dehradun", "guwahati", "kochi",
+        "bhopal", "indore", "jabalpur", "gwalior", "ujjain", "sagar",
+        "dewas", "satna", "ratlam", "rewa", "katni", "singrauli",
+        "burhanpur", "khandwa", "sehore", "vidisha", "hoshangabad",
+        "delhi", "mumbai", "pune", "nagpur", "jaipur", "ahmedabad",
+        "bengaluru", "bangalore", "hyderabad", "chennai", "kolkata",
+        "lucknow", "kanpur", "patna", "varanasi", "agra", "meerut",
+        "भोपल", "भोपाल", "इंदौर", "ग्वालियर", "उज्जैन", "जबलपुर",
     )
 
-    fun cityMention(tokens: List<String>): String? =
-        tokens.firstOrNull { it in KNOWN_CITIES }?.replaceFirstChar { it.uppercase() }
+    fun cityMention(tokens: List<String>): String? {
+        for (t in tokens) {
+            val hit = KNOWN_CITIES.firstOrNull { it.equals(t, ignoreCase = true) }
+            if (hit != null) return hit.replaceFirstChar { it.uppercase() }
+        }
+        return null
+    }
 }

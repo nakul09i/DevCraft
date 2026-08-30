@@ -6,7 +6,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
+
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,8 +53,11 @@ fun SettingsScreen(
     conflictCount: Int,
     databaseVersion: Int,
     appVersion: String,
+    onExportOrdersCsv: () -> Unit = {},
+    onExportBalancesCsv: () -> Unit = {},
     onNavigateBack: () -> Unit,
 ) {
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -107,14 +112,33 @@ fun SettingsScreen(
                 SettingsRow(
                     label = "Last successful sync",
                     value = lastSyncAt?.let {
-                        SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(it))
+                        val diff = System.currentTimeMillis() - it
+                        when {
+                            diff < 60_000 -> "Just now"
+                            diff < 3600_000 -> "${diff / 60_000}m ago"
+                            else -> SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(it))
+                        }
                     } ?: "Never",
                 )
-                SettingsRow(label = "Operations pending sync", value = "$pendingSyncCount")
+                SettingsRow(
+                    label = "Operations pending sync",
+                    value = "$pendingSyncCount",
+                    hint = when {
+                        pendingSyncCount > 0 && syncStatus == SyncStatus.OFFLINE -> "Offline — changes saved locally in Room"
+                        pendingSyncCount > 0 && syncStatus == SyncStatus.SYNCING -> "Uploading $pendingSyncCount pending changes..."
+                        pendingSyncCount > 0 -> "$pendingSyncCount changes waiting for cloud sync"
+                        syncStatus == SyncStatus.ONLINE -> "✓ All changes synced"
+                        else -> null
+                    }
+                )
 
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = onSyncNow, modifier = Modifier.fillMaxWidth()) {
-                    Text("Sync now")
+                OutlinedButton(
+                    onClick = onSyncNow,
+                    enabled = syncStatus != SyncStatus.SYNCING,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(if (syncStatus == SyncStatus.SYNCING) "Syncing..." else "Sync now")
                 }
                 if (syncError != null) {
                     Spacer(Modifier.height(8.dp))
@@ -135,7 +159,37 @@ fun SettingsScreen(
                 }
             }
 
+            // ---------- Data Export & Spreadsheet ----------
+            SettingsSection("Data Export & Spreadsheet") {
+                Text(
+                    "Export and share your complete orders and customer khata as Excel / Google Sheets compatible CSV files.",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    onClick = onExportOrdersCsv,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Export All Orders (Spreadsheet CSV)")
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onExportBalancesCsv,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Export Customer Khata (Balances CSV)")
+                }
+            }
+
             // ---------- SMS ----------
+
             SettingsSection("SMS order capture") {
                 Row(
                     modifier = Modifier.fillMaxWidth(),

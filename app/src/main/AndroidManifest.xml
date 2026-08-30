@@ -5,8 +5,9 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- Re-arm due-date alarms after reboot; Android drops them all on restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <!--
         Channel B: capture incoming customer SMS as order messages. Requested on
@@ -46,17 +47,6 @@
             android:name=".alerts.OrderDueReceiver"
             android:exported="false" />
 
-        <!--
-            exported=true is required: this receives a system broadcast.
-            android:permission ensures only the OS can deliver it, so another
-            app cannot forge a fake incoming SMS into the order inbox.
-        -->
-        <!--
-            Reads messaging notifications so orders can be captured without a
-            manual share. Requires the user to grant "Notification access" in
-            system settings; Android never grants this silently. Only an
-            allow-list of messaging apps is read - see docs/SMS_INGESTION.md.
-        -->
         <service
             android:name=".notifications.DevCraftNotificationListener"
             android:exported="false"
@@ -86,6 +76,16 @@
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
             </intent-filter>
         </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

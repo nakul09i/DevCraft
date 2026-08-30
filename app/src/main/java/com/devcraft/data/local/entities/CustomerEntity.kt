@@ -11,6 +11,8 @@ data class CustomerEntity(
     val phone: String? = null,
     val address: String? = null,
     val notes: String? = null,
+    val version: Int = 1,
+    val isDeleted: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
 

@@ -17,21 +17,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.devcraft.data.local.entities.MessageEntity
 import com.devcraft.data.local.entities.MessageSource
-import com.devcraft.ui.components.ConfidenceMeter
-import com.devcraft.ui.components.FieldIcons
-import com.devcraft.ui.components.IconLabelRow
-import com.devcraft.ui.components.MessageStatusChip
-import com.devcraft.ui.components.SourceBadge
 import com.devcraft.domain.model.ParsedItem
 import com.devcraft.domain.model.ParsedMessage
+import com.devcraft.ui.components.*
 import java.text.SimpleDateFormat
 import java.util.*
 
-/**
- * Compact key/value table of what the parser understood. Deliberately a table:
- * a merchant scanning a screen needs to spot a wrong quantity or a missing
- * address in one glance, which prose does not allow.
- */
 @Composable
 private fun InterpretationTable(
     rows: List<Triple<androidx.compose.ui.graphics.vector.ImageVector, String, String>>
@@ -90,12 +81,13 @@ fun MessageDetailScreen(
         onParseText(message.originalText)
     }
 
-    var customerName by remember { mutableStateOf(initialParsed.customer ?: message.senderName ?: "Guest Customer") }
+    var customerName by remember { mutableStateOf(initialParsed.customer ?: message.senderName ?: "") }
     var dueDate by remember { mutableStateOf(initialParsed.due_date ?: "") }
     var amountText by remember { mutableStateOf(if (initialParsed.amount != null) "${initialParsed.amount}" else "") }
     var items by remember { mutableStateOf(initialParsed.items) }
     var confidence by remember { mutableStateOf(initialParsed.confidence) }
     var needsClarification by remember { mutableStateOf(initialParsed.needs_clarification) }
+    var showAnalysisSheet by remember { mutableStateOf(false) }
 
     var deliveryAddress by remember {
         mutableStateOf(
@@ -106,6 +98,13 @@ fun MessageDetailScreen(
     }
     var isSubmitting by remember { mutableStateOf(false) }
 
+    if (showAnalysisSheet) {
+        ScoreAnalysisSheet(
+            parsed = initialParsed,
+            onDismiss = { showAnalysisSheet = false }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -113,6 +112,11 @@ fun MessageDetailScreen(
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showAnalysisSheet = true }) {
+                        Icon(Icons.Default.Assessment, contentDescription = "View Scoring Analysis", tint = MaterialTheme.colorScheme.primary)
                     }
                 }
             )
@@ -126,7 +130,7 @@ fun MessageDetailScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Header: Source & Timestamp
+            // Header: Source, Classification Badge, Timestamp
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
@@ -151,7 +155,48 @@ fun MessageDetailScreen(
                         )
                     }
 
-                    MessageStatusChip(status = message.status)
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = if (initialParsed.classification.isOrder) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+                    ) {
+                        Text(
+                            text = initialParsed.classification.label.uppercase(),
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (initialParsed.classification.isOrder) Color(0xFF2E7D32) else Color(0xFFE65100)
+                        )
+                    }
+                }
+            }
+
+            // Non-Order Notice Banner
+            if (!initialParsed.classification.isOrder) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.6f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                        Column {
+                            Text(
+                                text = "${initialParsed.classification.label.uppercase()} — NOT AN ORDER",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontSize = 13.sp
+                            )
+                            Text(
+                                text = "This message was classified as ${initialParsed.classification.label.lowercase()} and cannot be automatically converted into an order.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
                 }
             }
 
@@ -220,22 +265,36 @@ fun MessageDetailScreen(
                 }
             }
 
-            // Structured Extraction Section
-            Text(
-                text = "Structured Extraction (Offline Parser)",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            )
+            // Structured Extraction Header + Score Details Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Structured Extraction (Offline)",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
-            // Confidence: icon + bar + number, three redundant encodings
+                TextButton(
+                    onClick = { showAnalysisSheet = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                ) {
+                    Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Score Details", fontSize = 12.sp)
+                }
+            }
+
+            // Confidence meter
             ConfidenceMeter(
                 confidence = confidence,
                 needsReview = needsClarification,
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // Interpretation table: everything the parser resolved, at a glance.
-            // Icons carry the meaning so a dense table stays scannable.
+            // Interpretation Table
             InterpretationTable(
                 rows = buildList {
                     add(Triple(FieldIcons.Customer, "Customer", initialParsed.customer ?: "—"))
@@ -258,7 +317,12 @@ fun MessageDetailScreen(
                             initialParsed.amount?.let { "₹%,.0f".format(it) } ?: "—"
                         )
                     )
-                    add(Triple(FieldIcons.DueDate, "Due date", initialParsed.due_date ?: "—"))
+                    add(
+                        Triple(
+                            FieldIcons.DueDate, "Due date",
+                            initialParsed.display_date ?: initialParsed.due_date ?: "—"
+                        )
+                    )
                     add(
                         Triple(
                             FieldIcons.Address, "Delivery address",
@@ -266,6 +330,9 @@ fun MessageDetailScreen(
                         )
                     )
                     add(Triple(FieldIcons.Pincode, "PIN code", initialParsed.pincode ?: "—"))
+                    if (initialParsed.payment_method != null) {
+                        add(Triple(FieldIcons.Payment, "Payment", initialParsed.payment_method))
+                    }
                     if (initialParsed.references_prior_order) {
                         add(Triple(FieldIcons.Repeat, "Repeat order", "Yes — same as before"))
                     }
@@ -282,92 +349,101 @@ fun MessageDetailScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Editable Parsed Fields
-            OutlinedTextField(
-                value = customerName,
-                onValueChange = { customerName = it },
-                label = { Text("Customer Name") },
-                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                enabled = !isConverted
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            // Editable Parsed Fields (Enabled only if it is an ORDER)
+            if (initialParsed.classification.isOrder) {
                 OutlinedTextField(
-                    value = dueDate,
-                    onValueChange = { dueDate = it },
-                    label = { Text("Due Date (YYYY-MM-DD)") },
-                    leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null) },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    enabled = !isConverted
-                )
-
-                OutlinedTextField(
-                    value = amountText,
-                    onValueChange = { amountText = it },
-                    label = { Text("Amount (₹)") },
-                    leadingIcon = { Icon(Icons.Default.CurrencyRupee, contentDescription = null) },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    enabled = !isConverted
-                )
-            }
-
-            OutlinedTextField(
-                value = deliveryAddress,
-                onValueChange = { deliveryAddress = it },
-                label = { Text("Delivery address (optional)") },
-                leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !isConverted,
-                minLines = 2,
-                supportingText = {
-                    Text(
-                        text = if (initialParsed.hasLocation) "Read from the message text"
-                        else "None found in the message - add it if you know it",
-                        fontSize = 11.sp,
-                    )
-                },
-            )
-
-            // Items List
-            Text("Extracted Items (${items.size})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-
-            items.forEachIndexed { index, item ->
-                Card(
+                    value = customerName,
+                    onValueChange = { customerName = it },
+                    label = { Text("Customer Name") },
+                    placeholder = { Text("Guest Customer") },
+                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                     modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
+                    singleLine = true,
+                    enabled = !isConverted
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedTextField(
+                        value = dueDate,
+                        onValueChange = { dueDate = it },
+                        label = { Text("Due Date (YYYY-MM-DD)") },
+                        supportingText = {
                             Text(
-                                text = "${item.quantity}x ${item.description}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
+                                text = initialParsed.display_date?.let { "Display: $it" } ?: "ISO: YYYY-MM-DD",
+                                fontSize = 11.sp
                             )
-                            if (item.attributes.isNotEmpty()) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    modifier = Modifier.padding(top = 4.dp)
-                                ) {
-                                    item.attributes.forEach { (k, v) ->
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = MaterialTheme.colorScheme.primaryContainer
-                                        ) {
-                                            Text(
-                                                text = "$k: $v",
-                                                fontSize = 11.sp,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
+                        },
+                        leadingIcon = { Icon(Icons.Default.CalendarToday, contentDescription = null) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        enabled = !isConverted
+                    )
+
+                    OutlinedTextField(
+                        value = amountText,
+                        onValueChange = { amountText = it },
+                        label = { Text("Amount (₹)") },
+                        leadingIcon = { Icon(Icons.Default.CurrencyRupee, contentDescription = null) },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true,
+                        enabled = !isConverted
+                    )
+                }
+
+                OutlinedTextField(
+                    value = deliveryAddress,
+                    onValueChange = { deliveryAddress = it },
+                    label = { Text("Delivery address (optional)") },
+                    leadingIcon = { Icon(Icons.Default.LocationOn, contentDescription = null) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isConverted,
+                    minLines = 2,
+                    supportingText = {
+                        Text(
+                            text = if (initialParsed.hasLocation) "Read from the message text"
+                            else "None found in the message - add it if you know it",
+                            fontSize = 11.sp,
+                        )
+                    },
+                )
+
+                // Items List
+                Text("Extracted Items (${items.size})", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+
+                items.forEachIndexed { index, item ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "${item.quantity}x ${item.description}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 15.sp
+                                )
+                                if (item.attributes.isNotEmpty()) {
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    ) {
+                                        item.attributes.forEach { (k, v) ->
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = MaterialTheme.colorScheme.primaryContainer
+                                            ) {
+                                                Text(
+                                                    text = "$k: $v",
+                                                    fontSize = 11.sp,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -375,60 +451,60 @@ fun MessageDetailScreen(
                         }
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            // Action CTAs
-            if (!isConverted) {
-                Button(
-                    onClick = {
-                        isSubmitting = true
-                        val amount = amountText.toDoubleOrNull()
-                        onConfirmOrder(
-                            message.messageId,
-                            customerName,
-                            if (dueDate.isNotBlank()) dueDate else null,
-                            amount,
-                            items,
-                            message.originalText,
-                            deliveryAddress.trim().takeIf { it.isNotBlank() }
-                        ) { newOrderId ->
-                            isSubmitting = false
-                            onNavigateOrderDetail(newOrderId)
+                // Action CTAs
+                if (!isConverted) {
+                    Button(
+                        onClick = {
+                            isSubmitting = true
+                            val amount = amountText.toDoubleOrNull()
+                            onConfirmOrder(
+                                message.messageId,
+                                customerName.ifBlank { "Guest Customer" },
+                                if (dueDate.isNotBlank()) dueDate else null,
+                                amount,
+                                items,
+                                message.originalText,
+                                deliveryAddress.trim().takeIf { it.isNotBlank() }
+                            ) { newOrderId ->
+                                isSubmitting = false
+                                onNavigateOrderDetail(newOrderId)
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        enabled = !isSubmitting
+                    ) {
+                        if (isSubmitting) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
+                        } else {
+                            Icon(Icons.Default.Check, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Confirm & Create Room Order", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                         }
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    enabled = !isSubmitting
-                ) {
-                    if (isSubmitting) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp))
-                    } else {
-                        Icon(Icons.Default.Check, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Confirm & Create Room Order", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
                 }
+            }
 
-                OutlinedButton(
-                    onClick = {
-                        val recomputed = onParseText(message.originalText)
-                        customerName = recomputed.customer ?: customerName
-                        dueDate = recomputed.due_date ?: dueDate
-                        amountText = if (recomputed.amount != null) "${recomputed.amount}" else amountText
-                        items = recomputed.items
-                        confidence = recomputed.confidence
-                        needsClarification = recomputed.needs_clarification
-                    },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Re-parse Message Offline")
-                }
+            OutlinedButton(
+                onClick = {
+                    val recomputed = onParseText(message.originalText)
+                    customerName = recomputed.customer ?: customerName
+                    dueDate = recomputed.due_date ?: dueDate
+                    amountText = if (recomputed.amount != null) "${recomputed.amount}" else amountText
+                    items = recomputed.items
+                    confidence = recomputed.confidence
+                    needsClarification = recomputed.needs_clarification
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Re-parse Message Offline")
             }
         }
     }

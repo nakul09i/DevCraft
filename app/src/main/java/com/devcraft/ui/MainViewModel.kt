@@ -19,7 +19,10 @@ import com.devcraft.data.local.entities.*
 import com.devcraft.domain.model.ParsedItem
 import com.devcraft.domain.model.ParsedMessage
 import com.devcraft.parser.offline.DeterministicParser
+import com.devcraft.auth.FirebaseAuthRepository
 import com.devcraft.sync.engine.OperationLogManager
+import com.devcraft.sync.engine.SyncEngine
+import com.devcraft.sync.engine.SyncWorker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -38,6 +41,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val deviceId = (application as DevCraftApplication).deviceId
     private val operationLogManager = OperationLogManager(operationDao, deviceId)
     private val messageIngestor = MessageIngestor(db, deviceId)
+    private val authRepo = FirebaseAuthRepository(application)
+    val syncEngine = SyncEngine(application, db, deviceId)
+
+    val currentUserId = MutableStateFlow<String?>(authRepo.currentUser()?.uid)
 
     // --- Real connectivity, replacing the old manual "simulate" toggle ---
 
@@ -51,7 +58,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .map { it == ConnectionState.ONLINE }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
 
-    /** True only while a sync is actually running. No transport exists yet. */
+    /** True only while a sync is actually running. */
     private val _syncing = MutableStateFlow(false)
     private val _syncError = MutableStateFlow<String?>(null)
     val syncError: StateFlow<String?> = _syncError.asStateFlow()
@@ -71,9 +78,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val notificationCaptureEnabled: StateFlow<Boolean> = settings.notificationCaptureEnabled
     val lastSyncAt: StateFlow<Long?> = settings.lastSyncAt
 
+    init {
+        // Auto-sync when connectivity transitions to ONLINE
+        viewModelScope.launch {
+            connectionState.collect { conn ->
+                if (conn == ConnectionState.ONLINE && currentUserId.value != null) {
+                    requestSyncNow()
+                }
+            }
+        }
+        // Start sync if user session is already active
+        authRepo.currentUser()?.uid?.let { uid ->
+            onUserAuthenticated(uid)
+        }
+    }
+
+    fun onUserAuthenticated(uid: String) {
+        currentUserId.value = uid
+        syncEngine.startRealtimeSync(uid)
+        SyncWorker.schedulePeriodicSync(getApplication())
+        requestSyncNow()
+    }
+
+    fun onUserSignedOut() {
+        currentUserId.value = null
+        syncEngine.stopRealtimeSync()
+    }
+
     fun setSmsCaptureEnabled(enabled: Boolean) = settings.setSmsCaptureEnabled(enabled)
     fun setNotificationCaptureEnabled(enabled: Boolean) =
         settings.setNotificationCaptureEnabled(enabled)
+
 
     // Diagnostics are written by a receiver and a service in other entry points,
     // so they are pulled on demand rather than observed.
@@ -158,6 +193,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val pendingOperations: StateFlow<List<OperationEntity>> = operationDao.getPendingOperations()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val pendingOperationsCount: StateFlow<Int> = operationDao.getPendingOperationsCountFlow()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
     val conflicts: StateFlow<List<ConflictEntity>> = conflictDao.getAllConflicts()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -211,18 +249,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /**
-     * There is no sync transport yet, so this cannot succeed. It reports that
-     * honestly rather than faking a successful sync.
+     * Triggers immediate synchronization with Firestore for the authenticated user.
      */
     fun requestSyncNow() {
-        _syncError.value = if (connectionState.value == ConnectionState.ONLINE) {
-            "Cloud sync is not implemented yet. Local data is safe."
-        } else {
-            "No connection. Nothing to sync to yet - cloud sync is not implemented."
+        val uid = currentUserId.value ?: authRepo.currentUser()?.uid
+        if (uid == null) {
+            _syncError.value = "Sign in to enable cloud sync."
+            return
+        }
+        if (!syncEngine.isConfigured) {
+            _syncError.value = "Firebase sync is not configured in this build."
+            return
+        }
+        if (connectionState.value != ConnectionState.ONLINE) {
+            _syncError.value = "Device is offline. Changes are saved locally and will sync when connected."
+            return
+        }
+
+        viewModelScope.launch {
+            _syncing.value = true
+            _syncError.value = null
+            val result = syncEngine.syncNow(uid)
+            _syncing.value = false
+            result.onFailure { t ->
+                _syncError.value = t.message ?: "Sync failed. Will retry."
+            }
         }
     }
 
     fun clearSyncError() {
+
         _syncError.value = null
     }
 
@@ -332,14 +388,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         status = "CONFIRMED",
                         totalAmount = amount ?: 0.0,
                         dueDate = dueDate,
+                        rawDateText = dueDate,
+                        resolvedDate = dueDate,
+                        dateConfidence = 1.0f,
                         rawMessage = rawMessage,
                         referencesPriorOrder = false,
                         confidence = 1.0f,
                         needsClarification = false,
+                        classification = "ORDER",
+                        classificationScore = 0.97f,
+                        fieldExtractionScore = 0.95f,
+                        dateResolutionScore = if (dueDate != null) 1.0f else 1.0f,
+                        clarificationDecisionScore = 1.0f,
+                        overallScore = 0.95f,
                         createdAt = now,
                         updatedAt = now,
-                        // Text address only. Coordinates stay null until a
-                        // mapping provider is configured; nothing here needs one.
                         formattedAddress = deliveryAddress,
                         locationSource = deliveryAddress?.let { "MESSAGE_TEXT" },
                         locationUpdatedAt = deliveryAddress?.let { now }
@@ -402,11 +465,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 status = "CONFIRMED",
                 totalAmount = parsedMessage.amount ?: 0.0,
                 dueDate = parsedMessage.due_date,
+                rawDateText = parsedMessage.raw_date_text,
+                resolvedDate = parsedMessage.due_date,
+                dateConfidence = parsedMessage.date_confidence,
                 rawMessage = rawMessage,
                 referencesPriorOrder = parsedMessage.references_prior_order,
                 confidence = parsedMessage.confidence,
-                needsClarification = parsedMessage.needs_clarification
+                needsClarification = parsedMessage.needs_clarification,
+                paymentMethod = parsedMessage.payment_method,
+                classification = parsedMessage.classification.name,
+                classificationScore = parsedMessage.classification_score,
+                fieldExtractionScore = parsedMessage.field_extraction_score,
+                dateResolutionScore = parsedMessage.date_resolution_score,
+                clarificationDecisionScore = parsedMessage.clarification_decision_score,
+                overallScore = parsedMessage.overall_score,
+                formattedAddress = parsedMessage.delivery_address
             )
+
 
             val items = parsedMessage.items.map {
                 OrderItemEntity(

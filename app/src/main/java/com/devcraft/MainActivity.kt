@@ -24,8 +24,10 @@ import androidx.navigation.navArgument
 import com.devcraft.alerts.CapturedMessageNotifier
 import com.devcraft.alerts.LocalAlertScheduler
 import com.devcraft.data.local.entities.MessageSource
+import com.devcraft.export.CsvExportManager
 import com.devcraft.notifications.DevCraftNotificationListener
 import com.devcraft.ui.AuthViewModel
+
 import com.devcraft.ui.MainViewModel
 import com.devcraft.ui.components.DevCraftBottomNavBar
 import com.devcraft.ui.screens.*
@@ -93,10 +95,21 @@ class MainActivity : ComponentActivity() {
                 val isOnline by viewModel.isOnline.collectAsState()
                 val orders by viewModel.orders.collectAsState()
                 val pendingOps by viewModel.pendingOperations.collectAsState()
+                val pendingSyncCount by viewModel.pendingOperationsCount.collectAsState()
                 val conflicts by viewModel.conflicts.collectAsState()
                 val unreadMsgCount by viewModel.unreadMessageCount.collectAsState()
                 val filteredMessages by viewModel.filteredMessages.collectAsState()
                 val selectedFilter by viewModel.messageFilter.collectAsState()
+
+                // Connect authentication lifecycle to multi-device sync
+                LaunchedEffect(authState.user) {
+                    val uid = authState.user?.uid
+                    if (uid != null) {
+                        viewModel.onUserAuthenticated(uid)
+                    } else {
+                        viewModel.onUserSignedOut()
+                    }
+                }
 
                 // Open a freshly shared message. Reads a consumable StateFlow so a
                 // cold-start share (ingested before this UI existed) still lands.
@@ -107,6 +120,7 @@ class MainActivity : ComponentActivity() {
                         viewModel.consumePendingMessage()
                     }
                 }
+
 
                 // Deep link from a tapped due-date notification
                 val pendingOrderId by viewModel.pendingOrderId.collectAsState()
@@ -164,13 +178,14 @@ class MainActivity : ComponentActivity() {
                                 isOnline = isOnline,
                                 totalOrders = orders.size,
                                 unreadMessageCount = unreadMsgCount,
-                                pendingSyncCount = pendingOps.size,
+                                pendingSyncCount = pendingSyncCount,
                                 conflictCount = conflicts.size,
                                 dueTodayCount = dueToday.size,
                                 overdueCount = overdue.size,
                                 outstandingTotal = outstanding,
                                 committedThisWeekCount = committedCount,
                                 committedThisWeekValue = committedValue,
+
                                 onNavigateSettings = { navController.navigate("settings") },
                                 onNavigateInbox = { navController.navigate("inbox") },
                                 onNavigateNewOrder = { navController.navigate("new_order") },
@@ -212,19 +227,23 @@ class MainActivity : ComponentActivity() {
                             val syncErr by viewModel.syncError.collectAsState()
                             val smsEnabled by viewModel.smsCaptureEnabled.collectAsState()
                             val notifEnabled by viewModel.notificationCaptureEnabled.collectAsState()
+                            val customerBalances by viewModel.customerBalances.collectAsState()
                             val diags by viewModel.diagnostics.collectAsState()
-
-                            // Refresh on entry: a receiver may have written since.
-                            LaunchedEffect(Unit) { viewModel.refreshDiagnostics() }
                             val messages by viewModel.allMessages.collectAsState()
 
+                            LaunchedEffect(Unit) { viewModel.refreshDiagnostics() }
+
                             SettingsScreen(
+
                                 signedInAs = authState.user?.displayIdentity,
                                 authAvailable = authState.firebaseAvailable,
-                                onSignOut = authViewModel::signOut,
+                                onSignOut = {
+                                    authViewModel.signOut()
+                                    viewModel.onUserSignedOut()
+                                },
                                 syncStatus = syncStatus,
                                 lastSyncAt = lastSync,
-                                pendingSyncCount = pendingOps.size,
+                                pendingSyncCount = pendingSyncCount,
                                 syncError = syncErr,
                                 onSyncNow = viewModel::requestSyncNow,
                                 onDismissSyncError = viewModel::clearSyncError,
@@ -251,11 +270,19 @@ class MainActivity : ComponentActivity() {
                                 orderCount = orders.size,
                                 messageCount = messages.size,
                                 conflictCount = conflicts.size,
-                                databaseVersion = 3,
+                                databaseVersion = 4,
                                 appVersion = BuildConfig.VERSION_NAME,
+                                onExportOrdersCsv = {
+                                    CsvExportManager.exportAndShareOrders(this@MainActivity, orders)
+                                },
+                                onExportBalancesCsv = {
+                                    CsvExportManager.exportAndShareBalances(this@MainActivity, customerBalances)
+                                },
                                 onNavigateBack = { navController.popBackStack() },
                             )
                         }
+
+
 
                         composable("conflicts") {
                             ConflictsScreen(

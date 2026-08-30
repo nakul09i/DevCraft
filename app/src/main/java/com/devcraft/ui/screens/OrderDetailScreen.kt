@@ -37,6 +37,18 @@ fun OrderDetailScreen(
     val order = orderWithItems.order
     val items = orderWithItems.items
 
+    var showAnalysisSheet by remember { mutableStateOf(false) }
+
+    if (showAnalysisSheet && !order.rawMessage.isNullOrBlank()) {
+        val parsed = remember(order.rawMessage) {
+            com.devcraft.parser.offline.DeterministicParser.parse(order.rawMessage)
+        }
+        com.devcraft.ui.components.ScoreAnalysisSheet(
+            parsed = parsed,
+            onDismiss = { showAnalysisSheet = false }
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -47,6 +59,11 @@ fun OrderDetailScreen(
                     }
                 },
                 actions = {
+                    if (!order.rawMessage.isNullOrBlank()) {
+                        IconButton(onClick = { showAnalysisSheet = true }) {
+                            Icon(Icons.Default.Assessment, contentDescription = "View Scoring Analysis", tint = MaterialTheme.colorScheme.primary)
+                        }
+                    }
                     IconButton(onClick = {
                         onDeleteOrder(order.orderId)
                         onNavigateBack()
@@ -104,7 +121,7 @@ fun OrderDetailScreen(
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Due Date", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = order.dueDate ?: "Not specified",
+                            text = com.devcraft.parser.offline.DeterministicParser.displayDate(order.dueDate) ?: order.dueDate ?: "Not specified",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -118,13 +135,14 @@ fun OrderDetailScreen(
                     Column(modifier = Modifier.padding(12.dp)) {
                         Text("Total Amount", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = "₹${order.totalAmount ?: 0.0}",
+                            text = order.totalAmount?.let { "₹%,.0f".format(it) } ?: "₹0",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
+
 
             // Delivery location, when the message contained one
             if (!order.formattedAddress.isNullOrBlank()) {

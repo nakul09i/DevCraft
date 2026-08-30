@@ -232,7 +232,9 @@ object FieldIcons {
     val Address = Icons.Default.LocationOn
     val Pincode = Icons.Default.MyLocation
     val Repeat = Icons.Default.Repeat
+    val Payment = Icons.Default.Payment
     val Colour = Icons.Default.Palette
     val Size = Icons.Default.Straighten
     val Attribute = Icons.Default.Label
 }
+

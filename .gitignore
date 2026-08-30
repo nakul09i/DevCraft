@@ -27,6 +27,12 @@ google-services.json
 *.pem
 service-account*.json
 
+# Web Node & Build
+web/node_modules/
+web/dist/
+web/.env
+web/.env.local
+
 # Built artifacts: ship via GitHub Releases, not version control
 release/*.apk
 release/*.aab

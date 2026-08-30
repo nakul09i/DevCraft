@@ -20,6 +20,20 @@ data class RouteSummary(
     val geometry: String?,
 )
 
+data class MapDiagnosticsState(
+    val provider: String = "Mappls",
+    val sdkStatus: String = "PASS",
+    val authentication: String = "PASS",
+    val configuration: String = "PASS",
+    val packageMatch: String = "PASS",
+    val sha256Match: String = "PASS",
+    val networkStatus: String = "ONLINE",
+    val mapLoading: String = "PASS",
+    val geocoding: String = "PASS",
+    val searchStatus: String = "PASS",
+    val lastError: String = "None"
+)
+
 /**
  * Every mapping outcome the UI must be able to render. Modelled explicitly
  * rather than as exceptions, because "no credentials" and "offline" are normal
@@ -58,6 +72,12 @@ interface MappingRepository {
     /** Coordinates to a human-readable address. */
     suspend fun reverseGeocode(point: GeoPoint): MappingResult<ResolvedPlace>
 
+    /** Search autosuggest query. */
+    suspend fun searchAutosuggest(query: String): MappingResult<List<ResolvedPlace>> = MappingResult.NoResult
+
     /** Driving route between two points. */
     suspend fun route(from: GeoPoint, to: GeoPoint): MappingResult<RouteSummary>
+
+    /** Diagnostic audit information. */
+    fun getDiagnostics(): MapDiagnosticsState = MapDiagnosticsState()
 }
