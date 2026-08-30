@@ -29,11 +29,14 @@ if (hasFirebaseConfig) {
 }
 
 android {
+    // namespace drives generated code (R, BuildConfig) and stays com.devcraft so
+    // the existing Kotlin package declarations are untouched. applicationId is the
+    // installed identity and what Firebase/google-services.json must match.
     namespace = "com.devcraft"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.devcraft"
+        applicationId = "com.neutron.devcraft"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
@@ -66,6 +69,14 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+    testOptions {
+        unitTests {
+            // Constructing Firebase exception types calls android.text.TextUtils,
+            // which throws "not mocked" in plain JVM tests. Returning defaults
+            // lets the auth classification tests run without Robolectric.
+            isReturnDefaultValues = true
+        }
     }
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.8"

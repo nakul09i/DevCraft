@@ -25,6 +25,9 @@ fun DashboardScreen(
     outstandingTotal: Double,
     committedThisWeekCount: Int,
     committedThisWeekValue: Double,
+    signedInAs: String? = null,
+    canSignOut: Boolean = false,
+    onSignOut: () -> Unit = {},
     onToggleNetwork: () -> Unit,
     onNavigateInbox: () -> Unit,
     onNavigateNewOrder: () -> Unit,
@@ -66,6 +69,23 @@ fun DashboardScreen(
 
         Button(onClick = onToggleNetwork, modifier = Modifier.fillMaxWidth()) {
             Text(if (isOnline) "Simulate Offline Mode" else "Simulate Online Mode")
+        }
+
+        if (canSignOut) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = signedInAs?.let { "Signed in as $it" } ?: "Working offline (not signed in)",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                TextButton(onClick = onSignOut) {
+                    Text(if (signedInAs != null) "Sign out" else "Sign in", fontSize = 13.sp)
+                }
+            }
         }
 
         // Metrics Grid (2x2)

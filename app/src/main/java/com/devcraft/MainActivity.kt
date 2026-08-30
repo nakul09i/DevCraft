@@ -22,6 +22,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.devcraft.alerts.LocalAlertScheduler
 import com.devcraft.data.local.entities.MessageSource
+import com.devcraft.ui.AuthViewModel
 import com.devcraft.ui.MainViewModel
 import com.devcraft.ui.components.DevCraftBottomNavBar
 import com.devcraft.ui.screens.*
@@ -29,6 +30,7 @@ import com.devcraft.ui.theme.DevCraftTheme
 
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
+    private val authViewModel: AuthViewModel by viewModels()
 
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* alerts degrade silently */ }
@@ -42,6 +44,26 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DevCraftTheme {
+                val authState by authViewModel.state.collectAsState()
+
+                // Auth gates only multi-device sync, never the local workflow:
+                // when Firebase is absent or the merchant chose offline, we go
+                // straight into the app.
+                if (!authState.canEnterApp) {
+                    LoginScreen(
+                        state = authState,
+                        onCountryCodeChange = authViewModel::setCountryCode,
+                        onPhoneChange = authViewModel::setPhone,
+                        onCodeChange = authViewModel::setCode,
+                        onSendOtp = { authViewModel.sendOtp(this@MainActivity) },
+                        onResendOtp = { authViewModel.sendOtp(this@MainActivity, isResend = true) },
+                        onVerify = authViewModel::verifyOtp,
+                        onBackToPhone = authViewModel::backToPhone,
+                        onContinueOffline = authViewModel::continueOffline,
+                    )
+                    return@DevCraftTheme
+                }
+
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
@@ -127,6 +149,9 @@ class MainActivity : ComponentActivity() {
                                 outstandingTotal = outstanding,
                                 committedThisWeekCount = committedCount,
                                 committedThisWeekValue = committedValue,
+                                signedInAs = authState.user?.phoneNumber,
+                                canSignOut = authState.firebaseAvailable,
+                                onSignOut = authViewModel::signOut,
                                 onToggleNetwork = { viewModel.toggleNetworkStatus() },
                                 onNavigateInbox = { navController.navigate("inbox") },
                                 onNavigateNewOrder = { navController.navigate("new_order") },
