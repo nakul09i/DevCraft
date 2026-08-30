@@ -5,6 +5,16 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+// google-services.json is per-project Firebase config and is not committed.
+// Apply the plugin only when it is present, so a fresh clone still builds a
+// working offline APK instead of failing at configuration time.
+val hasFirebaseConfig = project.file("google-services.json").exists()
+if (hasFirebaseConfig) {
+    apply(plugin = "com.google.gms.google-services")
+} else {
+    logger.lifecycle("DevCraft: google-services.json absent - building without Firebase sync. See FIREBASE_SETUP.md")
+}
+
 android {
     namespace = "com.devcraft"
     compileSdk = 34
@@ -75,6 +85,13 @@ dependencies {
 
     // WorkManager
     implementation("androidx.work:work-runtime-ktx:2.9.0")
+
+    // Firebase sync transport. Compiled in unconditionally; at runtime the app
+    // checks whether Firebase actually initialized and stays fully offline if not.
+    implementation(platform("com.google.firebase:firebase-bom:32.7.4"))
+    implementation("com.google.firebase:firebase-firestore-ktx")
+    implementation("com.google.firebase:firebase-auth-ktx")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
 
     // JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
