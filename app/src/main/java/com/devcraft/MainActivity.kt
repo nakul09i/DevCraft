@@ -65,12 +65,19 @@ class MainActivity : ComponentActivity() {
                 if (!authState.canEnterApp) {
                     LoginScreen(
                         state = authState,
+                        onChooseMethod = authViewModel::chooseMethod,
                         onCountryCodeChange = authViewModel::setCountryCode,
                         onPhoneChange = authViewModel::setPhone,
                         onCodeChange = authViewModel::setCode,
+                        onEmailChange = authViewModel::setEmail,
+                        onPasswordChange = authViewModel::setPassword,
                         onSendOtp = { authViewModel.sendOtp(this@MainActivity) },
                         onResendOtp = { authViewModel.sendOtp(this@MainActivity, isResend = true) },
-                        onVerify = authViewModel::verifyOtp,
+                        onVerifyOtp = authViewModel::verifyOtp,
+                        onSubmitEmail = authViewModel::submitEmail,
+                        onToggleCreateAccount = authViewModel::toggleCreatingAccount,
+                        onForgotPassword = authViewModel::sendPasswordReset,
+                        onBackToChooser = authViewModel::backToChooser,
                         onBackToPhone = authViewModel::backToPhone,
                         onContinueOffline = authViewModel::continueOffline,
                     )
@@ -205,7 +212,7 @@ class MainActivity : ComponentActivity() {
                             val messages by viewModel.allMessages.collectAsState()
 
                             SettingsScreen(
-                                signedInAs = authState.user?.phoneNumber,
+                                signedInAs = authState.user?.displayIdentity,
                                 authAvailable = authState.firebaseAvailable,
                                 onSignOut = authViewModel::signOut,
                                 syncStatus = syncStatus,
