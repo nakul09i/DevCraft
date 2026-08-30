@@ -8,6 +8,15 @@
     <!-- Re-arm due-date alarms after reboot; Android drops them all on restart. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!--
+        Channel B: capture incoming customer SMS as order messages. Requested on
+        demand from the dashboard, never at startup. Works without being the
+        default SMS app: SMS_RECEIVED is observable by any app holding this
+        permission. Unrelated to Firebase phone OTP, which is authentication.
+        NOTE: this is a Play Store restricted permission - see docs/SMS_INGESTION.md.
+    -->
+    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+
     <application
         android:name=".DevCraftApplication"
         android:allowBackup="true"
@@ -36,6 +45,21 @@
         <receiver
             android:name=".alerts.OrderDueReceiver"
             android:exported="false" />
+
+        <!--
+            exported=true is required: this receives a system broadcast.
+            android:permission ensures only the OS can deliver it, so another
+            app cannot forge a fake incoming SMS into the order inbox.
+        -->
+        <receiver
+            android:name=".sms.SmsReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="500">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".alerts.BootReceiver"

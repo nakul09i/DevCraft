@@ -35,11 +35,23 @@ class MainActivity : ComponentActivity() {
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* alerts degrade silently */ }
 
+    private val smsPermissionGranted = mutableStateOf(false)
+
+    // Opt-in, triggered from the dashboard. RECEIVE_SMS is a restricted
+    // permission, so it is never requested at startup.
+    private val requestSmsPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            smsPermissionGranted.value = granted
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Swap the branded launch window background for the real app theme.
         setTheme(R.style.Theme_DevCraft)
         super.onCreate(savedInstanceState)
         ensureNotificationPermission()
+        smsPermissionGranted.value = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.RECEIVE_SMS
+        ) == PackageManager.PERMISSION_GRANTED
         handleIntent(intent)
 
         setContent {
@@ -152,6 +164,10 @@ class MainActivity : ComponentActivity() {
                                 signedInAs = authState.user?.phoneNumber,
                                 canSignOut = authState.firebaseAvailable,
                                 onSignOut = authViewModel::signOut,
+                                smsCaptureEnabled = smsPermissionGranted.value,
+                                onEnableSmsCapture = {
+                                    requestSmsPermission.launch(Manifest.permission.RECEIVE_SMS)
+                                },
                                 onToggleNetwork = { viewModel.toggleNetworkStatus() },
                                 onNavigateInbox = { navController.navigate("inbox") },
                                 onNavigateNewOrder = { navController.navigate("new_order") },

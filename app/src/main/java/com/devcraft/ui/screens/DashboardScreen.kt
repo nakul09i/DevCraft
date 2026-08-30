@@ -28,6 +28,8 @@ fun DashboardScreen(
     signedInAs: String? = null,
     canSignOut: Boolean = false,
     onSignOut: () -> Unit = {},
+    smsCaptureEnabled: Boolean = false,
+    onEnableSmsCapture: () -> Unit = {},
     onToggleNetwork: () -> Unit,
     onNavigateInbox: () -> Unit,
     onNavigateNewOrder: () -> Unit,
@@ -96,6 +98,22 @@ fun DashboardScreen(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
             MetricCard("Pending Sync", "$pendingSyncCount", Modifier.weight(1f), {})
             MetricCard("Conflicts", "$conflictCount", Modifier.weight(1f), onNavigateConflicts)
+        }
+
+        // Channel B opt-in. Order SMS only; unrelated to login OTP.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = if (smsCaptureEnabled) "SMS order capture: on" else "SMS order capture: off",
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!smsCaptureEnabled) {
+                TextButton(onClick = onEnableSmsCapture) { Text("Enable", fontSize = 13.sp) }
+            }
         }
 
         Spacer(modifier = Modifier.height(4.dp))

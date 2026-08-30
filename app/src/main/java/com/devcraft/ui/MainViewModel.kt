@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.devcraft.DevCraftApplication
 import com.devcraft.alerts.LocalAlertScheduler
+import com.devcraft.data.ingest.MessageIngestor
 import com.devcraft.data.local.dao.CustomerBalance
 import com.devcraft.data.local.dao.OrderWithItems
 import com.devcraft.domain.OperationalCalendar
@@ -31,6 +32,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     val deviceId = (application as DevCraftApplication).deviceId
     private val operationLogManager = OperationLogManager(operationDao, deviceId)
+    private val messageIngestor = MessageIngestor(db, deviceId)
 
     private val _isOnline = MutableStateFlow(false)
     val isOnline: StateFlow<Boolean> = _isOnline.asStateFlow()
@@ -194,37 +196,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (text.isBlank()) return
 
         viewModelScope.launch(Dispatchers.IO) {
-            val messageId = UUID.randomUUID().toString()
-            val parsed = DeterministicParser.parse(text)
-            
-            // Infer senderName from text if not provided
-            val resolvedSenderName = senderName ?: parsed.customer
-
-            val entity = MessageEntity(
-                messageId = messageId,
+            // Same ingestion path the SMS receiver uses - one parser, one pipeline.
+            val messageId = messageIngestor.ingest(
+                text = text,
                 source = source,
                 sender = sender,
-                senderName = resolvedSenderName,
-                originalText = text,
-                receivedAt = System.currentTimeMillis(),
-                status = MessageStatus.PARSED.name,
-                confidence = parsed.confidence,
-                needsClarification = parsed.needs_clarification,
-                createdAt = System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
+                senderName = senderName,
             )
-
-            db.withTransaction {
-                messageDao.insertMessage(entity)
-                operationLogManager.logOperation(
-                    entityType = "MESSAGE",
-                    entityId = messageId,
-                    operationType = "CREATE",
-                    changedFieldsJson = "{\"source\": \"$source\", \"status\": \"PARSED\"}"
-                )
-            }
-
-            _pendingMessageId.value = messageId
+            if (messageId != null) _pendingMessageId.value = messageId
         }
     }
 
